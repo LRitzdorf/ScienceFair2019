@@ -1,2 +1,0 @@
-QGIS Startup Python Script
-Must be located at: C:\Users\Lucas Ritzdorf\AppData\Roaming\QGIS\QGIS3\profiles\default\python\startup.py
