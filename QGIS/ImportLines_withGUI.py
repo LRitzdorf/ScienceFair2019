@@ -1,9 +1,10 @@
 # Script to import data from a delimited file in which each row (object)
 # contains two sets of coordinates - say, BEGLAT, BEGLON, ENDLAT, and ENDLON -
 # which correspond to the start- and endpoints of a line.
-# This variant should be run while the QGIS GUI is open.
+# This variant should be run from inside of the QGIS GUI.
 # By Lucas Ritzdorf
 
+from qgis.core import *
 from itertools import (takewhile,repeat)
 
 # Define headers names
@@ -13,6 +14,10 @@ begLat = "BEGLAT"
 begLon = "BEGLON"
 endLat = "ENDLAT"
 endLon = "ENDLON"
+
+QgsApplication.setPrefixPath(r"C:/Program Files/QGIS 3.4", True)
+qgs = QgsApplication([], True)
+qgs.initQgis()
 
 # Set up input file
 fileName,ignore = QFileDialog.getOpenFileName()
@@ -61,3 +66,5 @@ error, ignore = QgsVectorFileWriter.writeAsVectorFormat(layer,\
     "utf-8", QgsCoordinateReferenceSystem(None), "ESRI Shapefile")
 del ignore
 if error != 0: print("Error exporting layer to Shapefile")
+
+qgs.exitQgis()

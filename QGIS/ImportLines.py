@@ -7,7 +7,7 @@ from qgis.core import *
 from itertools import (takewhile,repeat)
 
 # Supply path to QGIS install location
-QgsApplication.setPrefixPath(r"C:\Program Files\QGIS 3.4\apps\qgis", True)
+QgsApplication.setPrefixPath(r"C:/Program Files/QGIS 3.4", True)
 # Initialize the application, using True to indicate that a GUI is present
 qgs = QgsApplication([], True)
 qgs.initQgis()
