@@ -4,12 +4,14 @@
 # By Lucas Ritzdorf
 
 from qgis.core import *
+import qgis.utils
 from itertools import (takewhile,repeat)
+from PyQt5.QtWidgets import QFileDialog
 
 # Supply path to QGIS install location
 QgsApplication.setPrefixPath(r"C:/Program Files/QGIS 3.4", True)
-# Initialize the application, using True to indicate that a GUI is present
-qgs = QgsApplication([], True)
+# Initialize the application, using False to indicate that a GUI is not present
+qgs = QgsApplication([], False)
 qgs.initQgis()
 
 
@@ -33,7 +35,7 @@ def lineCount(filename):
 numLines = lineCount(fileName)
 fin = open(fileName, "r")
 importFails = [0,0]
-layer = iface.addVectorLayer(\
+layer = QgsVectorLayer(\
     "Linestring?crs=epsg:4326&field=id:integer&field=name:string(80)",\
     "Test Layer", "memory")
 headers = fin.readline().strip().split(",")
@@ -58,9 +60,6 @@ with edit(layer):
 fin.close()
 print(sum(importFails), "feature(s) failed to import;", importFails[1],\
     "of those had missing data")
-
-# Refresh the map canvas
-iface.mapCanvas().refresh()
 
 # Export the layer to a Shapefile
 error, ignore = QgsVectorFileWriter.writeAsVectorFormat(layer,\
