@@ -5,7 +5,9 @@
 # By Lucas Ritzdorf
 
 from qgis.core import *
+import qgis.utils
 from itertools import (takewhile,repeat)
+from PyQt5.QtWidgets import QFileDialog
 
 # Define headers names
 idHeader = r"OBJECTID *"
@@ -18,6 +20,8 @@ endLon = "ENDLON"
 QgsApplication.setPrefixPath(r"C:/Program Files/QGIS 3.4", True)
 qgs = QgsApplication([], True)
 qgs.initQgis()
+
+iface = qgis.utils.iface
 
 # Set up input file
 fileName,ignore = QFileDialog.getOpenFileName()
