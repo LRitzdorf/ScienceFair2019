@@ -33,11 +33,11 @@ def lineCount(filename):
     return sum( buf.count(b'\n') for buf in bufgen )
 
 numLines = lineCount(fileName)
-fin = open(fileName, "r")
 importFails = [0,0]
 layer = iface.addVectorLayer(\
     "Linestring?crs=epsg:4326&field=id:integer&field=name:string(80)",\
     "Test Layer", "memory")
+fin = open(fileName, "r")
 headers = fin.readline().strip().split(",")
 with edit(layer):
     for lineNum in range(numLines):
