@@ -15,13 +15,23 @@ qgs = QgsApplication([], False)
 qgs.initQgis()
 
 
-# Define headers names
-idHeader = r"OBJECTID *"
-nameHeader = "WaterbodyName"
-begLat = "BEGLAT"
-begLon = "BEGLON"
-endLat = "ENDLAT"
-endLon = "ENDLON"
+# Define default header names and prompts
+headerNames = (idHeader, nameHeader, begLat, begLon, endLat, endLon)
+defaultNames = (r"OBJECTID *", "WaterbodyName", "BEGLAT", "BEGLON", "ENDLAT",\
+                "ENDLON")
+headerPrompts = ("Object ID column", "Object Name", "Starting Latitude",\
+                 "Starting Longitude", "Ending Latitude", "Ending Longitude")
+
+# Prompt user for header names, if known
+print("Enter the following column header names, if known. If not, press enter "\
+      "to skip.\n(You may need to view the file in a text editor.)")
+for n in range(len(headerNames)):
+    headerNames[n] = input(headerPrompts[n] + ": ")
+
+# Process input
+for n in range(len(headerNames):
+    if headerNames[n] == "":
+        item = defaultNames[n]
 
 # Set up input file
 fileName,ignore = QFileDialog.getOpenFileName()
