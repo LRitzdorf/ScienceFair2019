@@ -1,7 +1,8 @@
 # Script to import data from a delimited file in which each row (object)
 # contains two sets of coordinates - say, BEGLAT, BEGLON, ENDLAT, and ENDLON -
 # which correspond to the start- and endpoints of a line.
-# This variant should be run from inside of the QGIS GUI.
+# This variant should be run from the QGIS Processing Toobox
+# (Use Ctrl+Alt+T to access)
 # By Lucas Ritzdorf
 
 from qgis.core import *
