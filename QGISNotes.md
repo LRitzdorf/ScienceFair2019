@@ -139,5 +139,7 @@ Then, use something like `nearest = index.nearestNeighbor(QgsPoint(25.4, 12.7), 
 ## Route Finding
 
 ### OpenRouteService
-Ask for queries to be returned in GeoJSON format.
-The results will be readable by QGIS's file import utility, in OGR mode.
+There is a [Python library for OpenRouteService](https://github.com/GIScience/openrouteservice-py). It facilitates easy access to ORS functions, and provides the results as native Python data structures (lists, dicts, etc).
+ORS limits API queries to **2500 per day**, but users can [contact them](https://openrouteservice.org/contact/) to request quota increases as necessary for their use case(s).
+
+**The API requires that input coordinates be in the format [LON, LAT].** This is the opposite of the normal order, and can be achieved with `revCoords = (coords[0][::-1], coords[1][::-1])` (where `coords` is a tuple containing the original two points).
