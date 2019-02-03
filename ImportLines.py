@@ -1,19 +1,14 @@
 # Script to import data from a delimited file in which each row (object)
 # contains two sets of coordinates - say, BEGLAT, BEGLON, ENDLAT, and ENDLON -
 # which correspond to the start- and endpoints of a line.
+# This variant should be run from the QGIS Processing Toobox
+# (Use Ctrl+Alt+T to access)
 # By Lucas Ritzdorf
 
 from qgis.core import *
 import qgis.utils
 from itertools import (takewhile,repeat)
 from PyQt5.QtWidgets import QFileDialog
-
-# Supply path to QGIS install location
-QgsApplication.setPrefixPath(r"C:/Program Files/QGIS 3.4", True)
-# Initialize the application, using False to indicate that a GUI is not present
-qgs = QgsApplication([], False)
-qgs.initQgis()
-
 
 # Define headers names
 idHeader = r"OBJECTID *"
@@ -22,6 +17,12 @@ begLat = "BEGLAT"
 begLon = "BEGLON"
 endLat = "ENDLAT"
 endLon = "ENDLON"
+
+QgsApplication.setPrefixPath(r"C:/Program Files/QGIS 3.4", True)
+qgs = QgsApplication([], True)
+qgs.initQgis()
+
+iface = qgis.utils.iface
 
 # Set up input file
 fileName,ignore = QFileDialog.getOpenFileName()
@@ -34,7 +35,7 @@ def lineCount(filename):
 
 numLines = lineCount(fileName)
 importFails = [0,0]
-layer = QgsVectorLayer(\
+layer = iface.addVectorLayer(\
     "Linestring?crs=epsg:4326&field=id:integer&field=name:string(80)",\
     "Test Layer", "memory")
 fin = open(fileName, "r")
@@ -61,12 +62,14 @@ fin.close()
 print(sum(importFails), "feature(s) failed to import;", importFails[1],\
     "of those had missing data")
 
+# Refresh the map canvas
+iface.mapCanvas().refresh()
+
 # Export the layer to a Shapefile
 error, ignore = QgsVectorFileWriter.writeAsVectorFormat(layer,\
     r"C:/Users/Lucas Ritzdorf/Documents/Science Fair/2019/Data/Test Layer.shp",\
     "utf-8", QgsCoordinateReferenceSystem(None), "ESRI Shapefile")
 del ignore
 if error != 0: print("Error exporting layer to Shapefile")
-
 
 qgs.exitQgis()

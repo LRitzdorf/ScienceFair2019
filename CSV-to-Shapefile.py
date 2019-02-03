@@ -1,18 +1,37 @@
 # Script to import data from a delimited file in which each row (object)
 # contains two sets of coordinates - say, BEGLAT, BEGLON, ENDLAT, and ENDLON -
 # which correspond to the start- and endpoints of a line.
-# This variant should be run while the QGIS GUI is open.
 # By Lucas Ritzdorf
 
+from qgis.core import *
+import qgis.utils
 from itertools import (takewhile,repeat)
+from PyQt5.QtWidgets import QFileDialog
 
-# Define headers names
-idHeader = r"OBJECTID *"
-nameHeader = "WaterbodyName"
-begLat = "BEGLAT"
-begLon = "BEGLON"
-endLat = "ENDLAT"
-endLon = "ENDLON"
+# Supply path to QGIS install location
+QgsApplication.setPrefixPath(r"C:/Program Files/QGIS 3.4", True)
+# Initialize the application, using False to indicate that a GUI is not present
+qgs = QgsApplication([], False)
+qgs.initQgis()
+
+
+# Define default header names and prompts
+headerNames = (idHeader, nameHeader, begLat, begLon, endLat, endLon)
+defaultNames = (r"OBJECTID *", "WaterbodyName", "BEGLAT", "BEGLON", "ENDLAT",\
+                "ENDLON")
+headerPrompts = ("Object ID column", "Object Name", "Starting Latitude",\
+                 "Starting Longitude", "Ending Latitude", "Ending Longitude")
+
+# Prompt user for header names, if known
+print("Enter the following column header names, if known. If not, press enter "\
+      "to skip.\n(You may need to view the file in a text editor.)")
+for n in range(len(headerNames)):
+    headerNames[n] = input(headerPrompts[n] + ": ")
+
+# Process input
+for n in range(len(headerNames):
+    if headerNames[n] == "":
+        item = defaultNames[n]
 
 # Set up input file
 fileName,ignore = QFileDialog.getOpenFileName()
@@ -25,7 +44,7 @@ def lineCount(filename):
 
 numLines = lineCount(fileName)
 importFails = [0,0]
-layer = iface.addVectorLayer(\
+layer = QgsVectorLayer(\
     "Linestring?crs=epsg:4326&field=id:integer&field=name:string(80)",\
     "Test Layer", "memory")
 fin = open(fileName, "r")
@@ -52,12 +71,12 @@ fin.close()
 print(sum(importFails), "feature(s) failed to import;", importFails[1],\
     "of those had missing data")
 
-# Refresh the map canvas
-iface.mapCanvas().refresh()
-
 # Export the layer to a Shapefile
 error, ignore = QgsVectorFileWriter.writeAsVectorFormat(layer,\
     r"C:/Users/Lucas Ritzdorf/Documents/Science Fair/2019/Data/Test Layer.shp",\
     "utf-8", QgsCoordinateReferenceSystem(None), "ESRI Shapefile")
 del ignore
 if error != 0: print("Error exporting layer to Shapefile")
+
+
+qgs.exitQgis()
