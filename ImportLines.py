@@ -139,11 +139,14 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         # Report successful loading of source
         feedback.pushInfo('Successfully loaded {source}')
 
+        fields = QgsFields()
+        fields.append(QgsField('id',QVariant.Int))
+        fields.append(QgsField('name',QVariant.String))
         (sink, dest_id) = self.parameterAsSink(
             parameters,
             self.OUTPUT,
             context,
-            [QgsField('id',QVariant.Int), QgsField('name',QVariant.String)],
+            fields,
             QgsWkbTypes.LineString,
             QgsCoordinateReferenceSystem('EPSG:4326')
         )
@@ -160,40 +163,42 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         feedback.pushInfo('Successfully loaded {sink}')
 
         # Set up variable for processing
-        total = 100.0 / lineCount(source)
+        numLines = lineCount(source)
+        total = 100.0 / numLines
         importFails = [0,0]
         fin = open(source, "r")
         headers = fin.readline().strip().split(",")
 
         feedback.setProgressText('Importing features...')
-        with edit(layer):
-            for lineNum in range(numLines):
-                # Stop the algorithm if cancel button has been clicked
-                if feedback.isCanceled():
-                    feedback.pushInfo('User cancelled the import operation')
-                    break
-                # Or proceed with processing
-                try:
-                    line = fin.readline().strip().split(",")
-                    feat = QgsFeature(layer.fields())
-                    feat.setAttribute("name", line[headers.index(nameHeader)])
-                    feat.setAttribute("id", line[headers.index(idHeader)])
-                    feat.setGeometry(QgsGeometry.fromPolyline([QgsPoint(float(\
-                        line[headers.index(begLon)]), float(line[\
-                        headers.index(begLat)])),QgsPoint(float(line[\
-                        headers.index(endLon)]), float(line[headers.index(\
-                        endLat)]))]))
-                    res = sink.addFeature(feat) #Or ,QgsFeatureSink.FastInsert)
-                    if res == False: importFails[0] += 1
-                except ValueError:
-                    importFails[1] += 1
-                except IndexError:
-                    if line == ['']: print("Blank line at line", lineNum)
-                    else: importFails[1] += 1
-                feedback.setProgress(int(lineNum * total))
-            fin.close()
-            print(sum(importFails), "feature(s) failed to import;",\
-                  importFails[1], "of those had missing data")
+        for lineNum in range(numLines):
+            # Stop the algorithm if cancel button has been clicked
+            if feedback.isCanceled():
+                feedback.pushInfo('User cancelled the import operation')
+                break
+            # Or proceed with processing
+            try:
+                line = fin.readline().strip().split(",")
+                feat = QgsFeature(fields)
+                feat.setAttribute("name",
+                    line[list(headerInfo.keys()).index('Object Name')])
+                feat.setAttribute("id",
+                    line[list(headerInfo.keys()).index('Object ID column')])
+                feat.setGeometry(QgsGeometry.fromPolyline([QgsPoint(float(\
+                    line[headers.index(begLon)]), float(line[\
+                    headers.index(begLat)])),QgsPoint(float(line[\
+                    headers.index(endLon)]), float(line[headers.index(\
+                    endLat)]))]))
+                res = sink.addFeature(feat) #Or ,QgsFeatureSink.FastInsert)
+                if res == False: importFails[0] += 1
+            except ValueError:
+                importFails[1] += 1
+            except IndexError:
+                if line == ['']: print("Blank line at line", lineNum)
+                else: importFails[1] += 1
+            feedback.setProgress(int(lineNum * total))
+        fin.close()
+        print(sum(importFails), "feature(s) failed to import;",\
+              importFails[1], "of those had missing data")
 
         # Return the results of the algorithm. In this case our only result is
         # the feature sink which contains the processed features, but some
