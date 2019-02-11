@@ -20,10 +20,10 @@ def lineCount(filename):
     """
     Quickly and efficiently get the number of lines in the file at "filename".
     """
-    f = open(filename, 'rb')
-    bufgen = takewhile(
-        lambda x: x, (f.raw.read(1024*1024) for _ in repeat(None)))
-    return sum( buf.count(b'\n') for buf in bufgen )
+    with open(filename, 'rb') as f:
+        bufgen = takewhile(
+            lambda x: x, (f.raw.read(1024*1024) for _ in repeat(None)))
+        return sum( buf.count(b'\n') for buf in bufgen )
 
 class MyProcessingAlgorithm(QgsProcessingAlgorithm):
     """
@@ -137,7 +137,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
             raise QgsProcessingException(self.invalidSourceError(parameters,
                                                                  self.INPUT))
         # Report successful loading of source
-        feedback.pushInfo('Successfully loaded {source}')
+        feedback.pushInfo(f'Successfully loaded source: {source}')
 
         fields = QgsFields()
         fields.append(QgsField('id',QVariant.Int))
@@ -160,7 +160,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
             raise QgsProcessingException(self.invalidSinkError(parameters,
                                                                self.OUTPUT))
         # Report successful loading of sink
-        feedback.pushInfo('Successfully loaded {sink}')
+        feedback.pushInfo(f'Successfully loaded sink: {sink}')
 
         # Set up variable for processing
         numLines = lineCount(source)
@@ -183,22 +183,33 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
                     line[list(headerInfo.keys()).index('Object Name')])
                 feat.setAttribute("id",
                     line[list(headerInfo.keys()).index('Object ID column')])
-                feat.setGeometry(QgsGeometry.fromPolyline([QgsPoint(float(\
-                    line[headers.index(begLon)]), float(line[\
-                    headers.index(begLat)])),QgsPoint(float(line[\
-                    headers.index(endLon)]), float(line[headers.index(\
-                    endLat)]))]))
+                feat.setGeometry(QgsLineString([
+                    QgsPoint(
+                        float(line[list(headerInfo.keys())\
+                            .index('Starting Longitude')]), 
+                        float(line[list(headerInfo.keys())\
+                            .index('Starting Latitude')])
+                    ),
+                    QgsPoint(
+                        float(line[list(headerInfo.keys())\
+                            .index('Ending Longitude')]),
+                        float(line[list(headerInfo.keys())\
+                            .index('Ending Latitude')])
+                    )
+                ]))
                 res = sink.addFeature(feat) #Or ,QgsFeatureSink.FastInsert)
                 if res == False: importFails[0] += 1
             except ValueError:
                 importFails[1] += 1
             except IndexError:
-                if line == ['']: print("Blank line at line", lineNum)
+                if line == ['']:
+                    feedback.pushInfo(f"Blank line at line {lineNum}")
                 else: importFails[1] += 1
             feedback.setProgress(int(lineNum * total))
         fin.close()
-        print(sum(importFails), "feature(s) failed to import;",\
-              importFails[1], "of those had missing data")
+        feedback.pushInfo(
+            f"{sum(importFails)} feature(s) failed to import; "\
+            + f"{importFails[1]} of those had missing data")
 
         # Return the results of the algorithm. In this case our only result is
         # the feature sink which contains the processed features, but some
