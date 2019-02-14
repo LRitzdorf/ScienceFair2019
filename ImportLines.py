@@ -12,7 +12,7 @@ import processing
 from itertools import (takewhile,repeat)
 
 # Define default header names and prompts
-headerInfo = {"Object ID column":r"OBJECTID *", "Object Name":"WaterbodyName",
+headerInfo = {"Object ID":r"OBJECTID *", "Object Name":"WaterbodyName",
               "Starting Latitude":"BEGLAT", "Starting Longitude":"BEGLON",
               "Ending Latitude":"ENDLAT", "Ending Longitude":"ENDLON"}
 
@@ -117,6 +117,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
     def processAlgorithm(self, parameters, context, feedback):
         """
         Here is where the processing itself takes place.
+        This algorithm imports data from 
         """
 
         # Retrieve the feature source and sink. The 'dest_id' variable is used
@@ -134,6 +135,9 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         # method to return a standard helper text for when a source cannot be
         # evaluated.
         if (source is None) or (not source.endswith('.csv')):
+            feedback.reportError(
+                "Input file must be a CSV (comma-separated value) file.",
+                fatalError=True)
             raise QgsProcessingException(self.invalidSourceError(parameters,
                                                                  self.INPUT))
         # Report successful loading of source
@@ -167,7 +171,6 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         total = 100.0 / numLines
         importFails = [0,0]
         fin = open(source, "r")
-        headers = fin.readline().strip().split(",")
 
         feedback.setProgressText('Importing features...')
         for lineNum in range(numLines):
@@ -178,27 +181,33 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
             # Or proceed with processing
             try:
                 line = fin.readline().strip().split(",")
-                feat = QgsFeature(fields)
-                feat.setAttribute("name",
-                    line[list(headerInfo.keys()).index('Object Name')])
-                feat.setAttribute("id",
-                    line[list(headerInfo.keys()).index('Object ID column')])
-                feat.setGeometry(QgsLineString([
-                    QgsPoint(
-                        float(line[list(headerInfo.keys())\
-                            .index('Starting Longitude')]), 
-                        float(line[list(headerInfo.keys())\
-                            .index('Starting Latitude')])
-                    ),
-                    QgsPoint(
-                        float(line[list(headerInfo.keys())\
-                            .index('Ending Longitude')]),
-                        float(line[list(headerInfo.keys())\
-                            .index('Ending Latitude')])
-                    )
-                ]))
-                res = sink.addFeature(feat) #Or ,QgsFeatureSink.FastInsert)
-                if res == False: importFails[0] += 1
+                if lineNum == 0:
+                    fieldPositions = {
+                        'Name'  :line.index(headerInfo['Object Name']),
+                        'ObjID' :line.index(headerInfo['Object ID']),
+                        'BegLat':line.index(headerInfo['Starting Latitude']),
+                        'BegLon':line.index(headerInfo['Starting Longitude']),
+                        'EndLat':line.index(headerInfo['Ending Latitude']),
+                        'EndLon':line.index(headerInfo['Ending Longitude'])
+                    }
+                else:
+                    feat = QgsFeature(fields)
+                    feat.setAttribute('name',
+                        line[fieldPositions['Name']])
+                    feat.setAttribute('id',
+                        line[fieldPositions['ObjID']])
+                    feat.setGeometry(QgsLineString([
+                        QgsPoint(
+                            x=float(line[fieldPositions['BegLon']]),
+                            y=float(line[fieldPositions['BegLat']])
+                        ),
+                        QgsPoint(
+                            x=float(line[fieldPositions['EndLon']]),
+                            y=float(line[fieldPositions['EndLat']])
+                        )
+                    ]))
+                    res = sink.addFeature(feat) #Or ,QgsFeatureSink.FastInsert)
+                    if res == False: importFails[0] += 1
             except ValueError:
                 importFails[1] += 1
             except IndexError:
