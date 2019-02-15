@@ -10,6 +10,7 @@ from PyQt5.QtCore import QCoreApplication, QVariant
 from qgis.core import *
 import processing
 from itertools import (takewhile,repeat)
+from csv import reader
 
 # Define default header names and prompts
 headerInfo = {"Object ID":r"OBJECTID *", "Object Name":"WaterbodyName",
@@ -54,14 +55,14 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'csvtoshapefile'
+        return 'importlines'
 
     def displayName(self):
         """
         Returns the translated algorithm name, which should be used for any
         user-visible display of the algorithm name.
         """
-        return self.tr('CSV to Shapefile')
+        return self.tr('Import Lines from CSV')
 
     def group(self):
         """
@@ -166,11 +167,12 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         # Report successful loading of sink
         feedback.pushInfo(f'Successfully loaded sink: {sink}')
 
-        # Set up variable for processing
+        # Set up variables for processing
         numLines = lineCount(source)
         total = 100.0 / numLines
         importFails = [0,0]
         fin = open(source, "r")
+        csvRdr = reader(fin, delimiter=',')
 
         feedback.setProgressText('Importing features...')
         for lineNum in range(numLines):
@@ -180,7 +182,8 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
                 break
             # Or proceed with processing
             try:
-                line = fin.readline().strip().split(",")
+                line = csvRdr.__next__()
+                # Initial header setup
                 if lineNum == 0:
                     fieldPositions = {
                         'Name'  :line.index(headerInfo['Object Name']),
@@ -190,6 +193,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
                         'EndLat':line.index(headerInfo['Ending Latitude']),
                         'EndLon':line.index(headerInfo['Ending Longitude'])
                     }
+                # Actual processing
                 else:
                     feat = QgsFeature(fields)
                     feat.setAttribute('name',
