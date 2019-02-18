@@ -172,6 +172,7 @@ result2 = processing.runAndLoadResults('native:extractvertices', {
 for layer in QgsProject.instance().mapLayers().values():
 	if layer.id() == result2['OUTPUT']:
 		addedLayer = layer
+addedLayer.setRenderer(QgsHeatmapRenderer)
 addedLayer.renderer().setColorRamp(QgsGradientColorRamp(QColor('transparent'),QColor(227,26,28)))
 addedLayer.renderer().setRadiusUnit(1)
 addedLayer.renderer().setRadius(500)
