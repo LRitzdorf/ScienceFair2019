@@ -1,22 +1,31 @@
 # -*- coding: utf-8 -*-
 
-# Create a heatmap rendering of a single route between two points.
-# Normally, this would be relatively pointless, but this script is intended as a
-# proof-of-concept for the idea of heatmapping many different routes together,
-# to create on overall travel intensity map.
+# Create a heatmap rendering of predicted boater travel in a given location and
+# based on a provided network of sources (counties) and sinks (lakes), in order
+# to create an overall boat-travel intensity map.
 
+from PyQt5.QtCore import QCoreApplication, QVariant
 from qgis.core import *
-import qgis.utils
+import processing
+import openrouteservice
+
+# Define variables as necessary
+# Here
+
+# Create necessary functions
+# Here
 
 class MyProcessingAlgorithm(QgsProcessingAlgorithm):
     """
-    This algorithm processes a CSV imput file into a Shapefile polyline layer.
+    This algorithm creates a heatmap of routes, based on a gravity model and
+    data from the OpenRouteService API.
     """
 
     # Constants used to refer to parameters and outputs. They will be
     # used when calling the algorithm from another algorithm, or when
     # calling from the QGIS console.
 
+    INPUT = 'INPUT' #TODO: Need text here
     OUTPUT = 'memory'
 
     def tr(self, string):
@@ -36,14 +45,14 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'singlepathheatmap'
+        return 'routeheatmap'
 
     def displayName(self):
         """
         Returns the translated algorithm name, which should be used for any
         user-visible display of the algorithm name.
         """
-        return self.tr('Single Path Heatmap')
+        return self.tr('Route Heatmap')
 
     def group(self):
         """
@@ -68,8 +77,10 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         should provide a basic description about what the algorithm does and the
         parameters and outputs associated with it.
         """
-        return self.tr("Create a heatmap of a single line segment.\
-                        This is a proof-of-concept script only.")
+        return self.tr("Create a heatmap rendering of predicted boater travel \
+                        in a given location and based on a provided network \
+                        of sources (counties) and sinks (lakes), in order to \
+                        create an overall boat-travel intensity map.")
 
     def initAlgorithm(self, config=None):
         """
@@ -77,7 +88,14 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         properties.
         """
 
-        # No input is necessary for this algorithm.
+        # Add a text input for the user's OpenRouteService API key.
+        self.addParameter(
+            QgsProcessingParameterFeatureSource(
+                self.INPUT,
+                self.tr('OpenRouteService API Key'),
+                [QgsProcessing.TypeFile] #TODO: `TypeText`?
+            )
+        )
 
         # Add a feature sink in which to store our processed features (this
         # usually takes the form of a newly created vector layer when the
@@ -85,7 +103,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(
             QgsProcessingParameterFeatureSink(
                 self.OUTPUT,
-                self.tr('Test Heatmap')
+                self.tr('Single Route Heatmap')
             )
         )
 
@@ -95,13 +113,17 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         This algorithm imports data from 
         """
 
-        # Retrieve the feature sink. The 'dest_id' variable is used
+        # Retrieve the feature source and sink. The 'dest_id' variable is used
         # to uniquely identify the feature sink, and must be included in the
         # dictionary returned by the processAlgorithm function.
+        source = self.parameterAsFile( #TODO: Adjust for text
+            parameters,
+            self.INPUT,
+            context
+        )
 
         fields = QgsFields()
         fields.append(QgsField('id',QVariant.Int))
-        fields.append(QgsField('name',QVariant.String))
         (sink, dest_id) = self.parameterAsSink(
             parameters,
             self.OUTPUT,
@@ -122,21 +144,44 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         # Report successful loading of sink
         feedback.pushInfo(f'Successfully loaded sink: {sink}')
 
-        feedback.setProgressText('Creating test heatmap...')
-        # Stop the algorithm if cancel button has been clicked
-        if feedback.isCanceled():
-            feedback.pushInfo('User cancelled the import operation')
-            break
-        # Or proceed with processing
-        feat = QgsFeature(fields)
-        feat.setAttribute('id', '0')
-        feat.setAttribute('name', 'Segment for test heatmap')
-        feat.setGeometry(QgsLineString([
-            QgsPoint(y=48.201946, x=-114.314984),
-            QgsPoint(y=48.182118, x=-114.614361)
-            ]))
-
-        feedback.pushInfo('Done.')
+        feedback.setProgressText('Loading routes...')
+        for lineNum in range(numLines): #TODO: Make this loop over routes
+            # Stop the algorithm if cancel button has been clicked
+            if feedback.isCanceled():
+                feedback.pushInfo('User cancelled the operation')
+                break
+            # Or proceed with processing
+            end = (-114.63478,48.19400)
+            start = (-114.31506,48.20218)
+            client = openrouteservice.Client(key='5b3ce3597851110001cf6248e3379d3da4854bb79887b36149de715d')
+            routes = client.directions((start,end))
+            encoded = routes['routes'][0]['geometry']
+            decoded = openrouteservice.convert.decode_polyline(encoded)
+            layer = QgsVectorLayer("LineString", "Kalispell to Ashley Lake", "memory")
+            provider = layer.dataProvider()
+            feat = QgsFeature()
+            feat.setGeometry(QgsGeometry.fromPolyline([QgsPoint(pt[0],pt[1]) for pt in decoded['coordinates']]))
+            provider.addFeature(feat)
+            QgsProject.instance().addMapLayer(layer)
+            import processing
+            result = processing.run('qgis:densifygeometriesgivenaninterval', {
+                    'INPUT':layer,
+                    'INTERVAL':0.001,
+                    'OUTPUT':'memory:'
+                    })
+            result2 = processing.runAndLoadResults('native:extractvertices', {
+                    'INPUT':result['OUTPUT'],
+                    'OUTPUT':'memory:'
+                    })
+            for layer in QgsProject.instance().mapLayers().values():
+                    if layer.id() == result2['OUTPUT']:
+                            addedLayer = layer
+            addedLayer.renderer().setColorRamp(QgsGradientColorRamp(QColor('transparent'),QColor(227,26,28)))
+            addedLayer.renderer().setRadiusUnit(1)
+            addedLayer.renderer().setRadius(500)
+        # Done with processing
+        feedback.pushInfo( #TODO: Rewrite this message
+            f"Done with processing. {failures} errors were encountered.")
 
         # Return the results of the algorithm. In this case our only result is
         # the feature sink which contains the processed features, but some
@@ -145,4 +190,3 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         # dictionary, with keys matching the feature corresponding parameter
         # or output names.
         return {self.OUTPUT: dest_id}
-    
