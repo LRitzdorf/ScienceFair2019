@@ -141,18 +141,22 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
             [QgsPoint(pt[0],pt[1]) for pt in decoded['coordinates']]))
         provider.addFeature(feat)
         QgsProject.instance().addMapLayer(routeLayer)
+        feedback.setProgressText('\nDensifying paths...')
         result = processing.run('qgis:densifygeometriesgivenaninterval', {
                 'INPUT':routeLayer,
                 'INTERVAL':0.001,
                 'OUTPUT':'memory:'
-                })
+                }, context=context, feedback=feedback)
+        densified = result['OUTPUT']
+        feedback.setProgressText('\nExtracting vertices...')
         result2 = processing.run('native:extractvertices', {
-                'INPUT':result['OUTPUT'],
+                'INPUT':densified,
                 'OUTPUT':outName
-                })
+                }, context=context, feedback=feedback)
         # This is the output layer:
-        outLayer = result2['OUTPUT']
+        outLayer = result2['OUTPUT'].clone()
         # Set up the desired heatmap renderer:
+        feedback.setProgressText('\nSetting up renderer...')
         rndrr = QgsHeatmapRenderer()
         rndrr.setColorRamp(QgsGradientColorRamp(
             QColor('transparent'),QColor(227,26,28)))
@@ -161,7 +165,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         # Set the output layer's renderer to the heatmap renderer just defined
         outLayer.setRenderer(rndrr)
         # Done with processing
-        feedback.pushInfo("Done with processing.")
+        feedback.setProgressText('\nDone with processing.')
 
         # Return the output layer.
         return {self.OUTPUT: outLayer.id()}
