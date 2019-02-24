@@ -112,14 +112,14 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         This algorithm imports data from 
         """
 
-        # Retrieve the API key and feature sink.
+        # Retrieve the API key.
         APIKey = self.parameterAsString(
             parameters,
             self.INPUT,
             context
         )
         # And the description of the output layer (most likely 'memory:').
-        outName = self.parameterAsOutputLayer(
+        outDesc = self.parameterAsOutputLayer(
             parameters,
             self.OUTPUT,
             context
@@ -130,17 +130,22 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         start = (-114.31506,48.20218)
         end = (-114.63478,48.19400)
         client = openrouteservice.Client(key=APIKey)
-        routes = client.directions((start,end))
+        try:
+            routes = client.directions((start,end))
+        except openrouteservice.exceptions.ApiError as e:
+            feedback.reportError(repr(e), fatalError=True)
+            if e.args[0] == 403: feedback.pushDebugInfo(
+                'Check the API key you entered. It may be incorrect.')
+            return {self.OUTPUT: None}
         encoded = routes['routes'][0]['geometry']
         decoded = openrouteservice.convert.decode_polyline(encoded)
-        routeLayer = QgsVectorLayer("LineString", "Kalispell to Ashley Lake",
+        routeLayer = QgsVectorLayer("LineString", "route",
                                "memory")
         provider = routeLayer.dataProvider()
         feat = QgsFeature()
         feat.setGeometry(QgsGeometry.fromPolyline(
             [QgsPoint(pt[0],pt[1]) for pt in decoded['coordinates']]))
         provider.addFeature(feat)
-        QgsProject.instance().addMapLayer(routeLayer)
         feedback.setProgressText('\nDensifying paths...')
         result = processing.run('qgis:densifygeometriesgivenaninterval', {
                 'INPUT':routeLayer,
@@ -151,7 +156,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         feedback.setProgressText('\nExtracting vertices...')
         result2 = processing.run('native:extractvertices', {
                 'INPUT':densified,
-                'OUTPUT':outName
+                'OUTPUT':outDesc
                 }, context=context, feedback=feedback)
         # This is the output layer:
         outLayer = result2['OUTPUT'].clone()
