@@ -173,4 +173,4 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         feedback.setProgressText('\nDone with processing.')
 
         # Return the output layer.
-        return {self.OUTPUT: outLayer.id()}
+        return {self.OUTPUT: outLayer}
