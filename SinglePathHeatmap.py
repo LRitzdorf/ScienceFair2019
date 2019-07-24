@@ -70,7 +70,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         contain lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'sciencefairtwentynineteen'
+        return 'sciencefair2019'
 
     def shortHelpString(self):
         """
@@ -91,18 +91,24 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         # Add a text input for the user's OpenRouteService API key.
         self.addParameter(
             QgsProcessingParameterString(
-                self.INPUT,
+                'INPUT',
                 self.tr('Your OpenRouteService API Key')
             )
         )
 
-        # Add a feature sink in which to store our processed features (this
-        # usually takes the form of a newly created vector layer when the
-        # algorithm is run in QGIS).
+        # And a new vector layer for the output heatmap.
         self.addParameter(
-            QgsProcessingParameterFeatureSink(
-                self.OUTPUT,
-                self.tr('Heatmap Layer')
+            QgsProcessingParameterVectorDestination(
+                'OUTPUT',
+                self.tr('Heatmap layer')
+            )
+        )
+
+        # Plus a new vector layer for the route, not as a heatmap.
+        self.addParameter(
+            QgsProcessingParameterVectorDestination(
+                'ROUTE_OUTPUT',
+                self.tr('Route layer')
             )
         )
 
@@ -115,17 +121,11 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         # Retrieve the API key.
         APIKey = self.parameterAsString(
             parameters,
-            self.INPUT,
-            context
-        )
-        # And the description of the output layer (most likely 'memory:').
-        outDesc = self.parameterAsOutputLayer(
-            parameters,
-            self.OUTPUT,
+            'INPUT',
             context
         )
 
-        feedback.setProgressText('Loading routes...')
+        feedback.setProgressText('Loading route...')
         # Begin processing
         start = (-114.31506,48.20218)
         end = (-114.63478,48.19400)
@@ -136,30 +136,26 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
             feedback.reportError(repr(e), fatalError=True)
             if e.args[0] == 403: feedback.pushDebugInfo(
                 'Check the API key you entered. It may be incorrect.')
-            return {self.OUTPUT: None}
+            return {'OUTPUT': None}
         encoded = routes['routes'][0]['geometry']
         decoded = openrouteservice.convert.decode_polyline(encoded)
-        routeLayer = QgsVectorLayer("LineString", "route",
-                               "memory")
-        provider = routeLayer.dataProvider()
+        routeLayer = QgsVectorLayer('LineString', 'route',
+                                    parameters['ROUTE_OUTPUT'])
         feat = QgsFeature()
         feat.setGeometry(QgsGeometry.fromPolyline(
             [QgsPoint(pt[0],pt[1]) for pt in decoded['coordinates']]))
-        provider.addFeature(feat)
-        feedback.setProgressText('\nDensifying paths...')
-        result = processing.run('qgis:densifygeometriesgivenaninterval', {
-                'INPUT':routeLayer,
-                'INTERVAL':0.001,
-                'OUTPUT':'memory:'
-                }, context=context, feedback=feedback)
-        densified = result['OUTPUT']
+        routeLayer.dataProvider().addFeature(feat)
+        feedback.setProgressText('\nDensifying route...')
+        densified = processing.run('qgis:densifygeometriesgivenaninterval',
+                                   {'INPUT': routeLayer,
+                                    'INTERVAL': 0.001,
+                                    'OUTPUT': 'memory:'},
+                                   context=context, feedback=feedback)
         feedback.setProgressText('\nExtracting vertices...')
-        result2 = processing.run('native:extractvertices', {
-                'INPUT':densified,
-                'OUTPUT':outDesc
-                }, context=context, feedback=feedback)
-        # This is the output layer:
-        outLayer = result2['OUTPUT'].clone()
+        vertices = processing.run('native:extractvertices',
+                                  {'INPUT': densified['OUTPUT'],
+                                   'OUTPUT': parameters['OUTPUT']},
+                                  context=context, feedback=feedback)
         # Set up the desired heatmap renderer:
         feedback.setProgressText('\nSetting up renderer...')
         rndrr = QgsHeatmapRenderer()
@@ -168,9 +164,10 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         rndrr.setRadiusUnit(1)
         rndrr.setRadius(500)
         # Set the output layer's renderer to the heatmap renderer just defined
-        outLayer.setRenderer(rndrr)
+        vertices['OUTPUT'].setRenderer(rndrr)
         # Done with processing
         feedback.setProgressText('\nDone with processing.')
 
         # Return the output layer.
-        return {self.OUTPUT: outLayer}
+        return {'OUTPUT': vertices['OUTPUT'],
+                'ROUTE_OUTPUT': routeLayer}

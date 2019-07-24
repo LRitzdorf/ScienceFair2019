@@ -79,7 +79,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         contain lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'sciencefairtwentynineteen'
+        return 'sciencefair2019'
 
     def shortHelpString(self):
         """
