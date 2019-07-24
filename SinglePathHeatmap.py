@@ -104,11 +104,12 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
             )
         )
 
-        # Plus a new vector layer for the route, not as a heatmap.
+        # And a new feature sink (vector layer) for the route, not as a heatmap.
         self.addParameter(
-            QgsProcessingParameterVectorDestination(
+            QgsProcessingParameterFeatureSink(
                 'ROUTE_OUTPUT',
-                self.tr('Route layer')
+                self.tr('Route layer'),
+                type=QgsProcessing.TypeVectorLine
             )
         )
 
@@ -124,6 +125,15 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
             'INPUT',
             context
         )
+        # And the sink/ID for the route output layer
+        (routeSink, routeSinkID) = self.parameterAsSink(
+            parameters,
+            'ROUTE_OUTPUT',
+            context,
+            fields=QgsFields(),
+            geometryType=QgsWkbTypes.LineString,
+            crs=QgsCoordinateReferenceSystem('epsg:4326')
+        )
 
         feedback.setProgressText('Loading route...')
         # Begin processing
@@ -136,26 +146,29 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
             feedback.reportError(repr(e), fatalError=True)
             if e.args[0] == 403: feedback.pushDebugInfo(
                 'Check the API key you entered. It may be incorrect.')
-            return {'OUTPUT': None}
+            return {'OUTPUT': None, 'ROUTE_OUTPUT': None}
         encoded = routes['routes'][0]['geometry']
         decoded = openrouteservice.convert.decode_polyline(encoded)
-        routeLayer = QgsVectorLayer('LineString', 'route',
-                                    parameters['ROUTE_OUTPUT'])
+        # Create a route feature and add it to the sink for the route output
         feat = QgsFeature()
         feat.setGeometry(QgsGeometry.fromPolyline(
             [QgsPoint(pt[0],pt[1]) for pt in decoded['coordinates']]))
-        routeLayer.dataProvider().addFeature(feat)
+        routeSink.addFeature(feat)
+        routeSink.flushBuffer()
         feedback.setProgressText('\nDensifying route...')
         densified = processing.run('qgis:densifygeometriesgivenaninterval',
-                                   {'INPUT': routeLayer,
+                                   {'INPUT': routeSinkID,
                                     'INTERVAL': 0.001,
                                     'OUTPUT': 'memory:'},
-                                   context=context, feedback=feedback)
+                                   context=context, feedback=feedback,
+                                   is_child_algorithm=True)
         feedback.setProgressText('\nExtracting vertices...')
         vertices = processing.run('native:extractvertices',
                                   {'INPUT': densified['OUTPUT'],
                                    'OUTPUT': parameters['OUTPUT']},
-                                  context=context, feedback=feedback)
+                                  context=context, feedback=feedback,
+                                  is_child_algorithm=True)
+        del densified
         # Set up the desired heatmap renderer:
         feedback.setProgressText('\nSetting up renderer...')
         rndrr = QgsHeatmapRenderer()
@@ -164,10 +177,11 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         rndrr.setRadiusUnit(1)
         rndrr.setRadius(500)
         # Set the output layer's renderer to the heatmap renderer just defined
-        vertices['OUTPUT'].setRenderer(rndrr)
+        QgsProcessingUtils.mapLayerFromString(vertices['OUTPUT'], context
+            ).setRenderer(rndrr)
         # Done with processing
         feedback.setProgressText('\nDone with processing.')
 
         # Return the output layer.
         return {'OUTPUT': vertices['OUTPUT'],
-                'ROUTE_OUTPUT': routeLayer}
+                'ROUTE_OUTPUT': routeSinkID}
