@@ -24,17 +24,14 @@ outputPath = os.getcwd() + '\\' + input('\nType the name of the new file to '\
                                         'be created for OUTPUT, relative to '\
                                         'your current path:\n')
 # (Try to) Open input files
-(countyFile,lakeFile) = (None,None)
 try:
     with open(countyPath, 'r') as countyFile, open(lakePath, 'r') as lakeFile:
         #Internalize county and lake data, ensuring that the most up-to-date
         #records are used for each lake
-except FileNotFoundError:
-    print(f'\nCould not find {f} file as specified above. Please check for '\
-          'typing errors and try again.\nFull error trace:')
+except FileNotFoundError as e:
+    print(f'\nCould not find "{e.filename}". Please check for typing errors '\
+          'and try again.\nFull error trace:')
     raise
-
-
 
         
 # Query user's ORS API key
@@ -80,7 +77,7 @@ with open(outputPath, 'a') as outputFile:
                     print('An unlikely error occurred. Please try again. If '\
                           'the issue persists, something very serious has '\
                           'changed in the OpenRouteService API.')
-                raise e
+                raise
             # And the possibility of a file error
             except IOError:
                 print('An error occurred while writing data to the output '\
