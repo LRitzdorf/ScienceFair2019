@@ -8,12 +8,109 @@
 # openrouteservice.convert.decode_polyline() function, with the string
 # representing the encoded polyline as its only argument. This would be done in
 # the program utilizing the stored data.
+
 version = 'v0.1'
 
 
 import openrouteservice
+from numpy import array, zeros
+
+class Site():
+    '''
+    Site object; contains information for monitoring locations.
+    Site(self, lat, lon[, pH, pHDate, calcium, calciumDate]) -> Site object
+    '''
+    def __init__(self, lat, lon, pH=None, pHDate=None, calcium=None,
+                 calciumDate=None):
+        self._lat =         lat
+        self._lon =         lon
+        self._pH =          pH
+        self._pHDate =      pHDate
+        self._calcium =     calcium
+        self._calciumDate = calciumDate
+
+    @property
+    def lat(self):
+        return self._lat
+
+    @property
+    def lon(self):
+        return self._lon
+
+    @property
+    def pH(self):
+        return self._pH
+
+    @pH.setter
+    def pH(self, newpH):
+        self._pH = newpH
+
+    @property
+    def pHDate(self):
+        return self._pHDate
+
+    @pHDate.setter
+    def pHDate(self, newDate):
+        self._pHDate = newDate
+
+    def addpH(newpH, newDate):
+        if newDate > self._pHDate:
+            self._pH = newpH
+            self._pHDate = newDate
+            return True
+        return False
+
+    @property
+    def calcium(self):
+        return self._calcium
+
+    @calcium.setter
+    def calcium(self, newCa):
+        self._calcium = newCa
+
+    @property
+    def calciumDate(self):
+        return self._calciumDate
+
+    @calciumDate.setter
+    def calciumDate(self, newDate):
+        self._calciumDate = newDate
+
+    def addCa(newCa, newDate):
+        if newDate > self._calciumDate:
+            self._calcium = newCa
+            self._calciumDate = newDate
+            return True
+        return False
+
+class County():
+    '''
+    County object; contains information for counties.
+    County(self, lat, lon, boats) -> County object
+    '''
+    def __init__(self, lat, lon, boats):
+        self._lat =   lat
+        self._lon =   lon
+        self._boats = boats
+
+    @property
+    def lat(self):
+        return self._lat
+
+    @property
+    def lon(self):
+        return self._lon
+
+    @property
+    def boats(self):
+        return self._boats
+
+    @boats.setter
+    def boats(self, new_boats):
+        self._boats = new_boats
 
 print(f'OpenRouteService Route Retrieval Program {version}\n')
+
 
 # Request county, lake, and output files
 countyPath = os.getcwd() + '\\' + input('Type the name of the COUNTY file, ' \
@@ -32,6 +129,12 @@ except FileNotFoundError as e:
     print(f'\nCould not find "{e.filename}". Please check for typing errors '\
           'and try again.\nFull error trace:')
     raise
+
+
+# Internalize county and lake data from files
+#Use addpH(value, date) and addCa(value, date) methods of Site() objects to add
+#data - will only be added if date is newer than current data date. Returns
+#boolean values to show whether data was added or not.
 
         
 # Query user's ORS API key
