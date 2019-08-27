@@ -12,9 +12,14 @@
 version = 'v0.1'
 
 
+# Import required libraries
 import openrouteservice
-from numpy import array, zeros
+import tkinter as tk
+from tkinter.filedialog import askopenfilename, asksaveasfilename
+from numpy import full
+import csv
 
+# Define Site and County classes
 class Site():
     '''
     Site object; contains information for monitoring locations.
@@ -113,35 +118,90 @@ print(f'OpenRouteService Route Retrieval Program {version}\n')
 
 
 # Request county, lake, and output files
-countyPath = os.getcwd() + '\\' + input('Type the name of the COUNTY file, ' \
-                                        'relative to your current path:\n')
-lakePath = os.getcwd() + '\\' + input('Type the name of the LAKE file, ' \
-                                      'relative to your current path:\n')
-outputPath = os.getcwd() + '\\' + input('\nType the name of the new file to '\
-                                        'be created for OUTPUT, relative to '\
-                                        'your current path:\n')
+lakePath,countyPath,outputPath = '','',''
+while lakePath == '':
+    print('Select the LAKE file in the "open" window...')
+    lakePath = askopenfilename()
+while countyPath == '':
+    print('Select the COUNTY file in the "Open" window...')
+    countyPath = askopenfilename()
+while outputPath == '':
+    print('Type the name of the new OUTPUT file in the window...')
+    outputPath = asksaveasfilename(defaultextension='.csv', filetypes=(
+        ('CSV (Comma-Separated Values) File','*.csv'),
+        ('TSV (Tab-Separated Values) File','*.tsv'),
+        ('All Files','*.*')))
+    outputSep = '\t' if outputPath.endswith('.tsv') else ','
+
 # (Try to) Open input files
 try:
     with open(countyPath, 'r') as countyFile, open(lakePath, 'r') as lakeFile:
-        #Internalize county and lake data, ensuring that the most up-to-date
-        #records are used for each lake
+        # Internalize county and lake data, ensuring that the most up-to-date
+        # records are used for each lake
+
+        # Create dicts containing names and objects, in the same order that
+        # they appear in the data matrix (counties on the vertical axis, sites
+        # on the horizontal)
+        sites = {}
+        counties = {}
+
+        # Populate object lists from data files
+        # County data
+        dialect = csv.Sniffer().sniff(countyFile.read(1024)); countyFile.seek(0)
+        countyReader = csv.reader(countyFile, dialect)
+        # Get past, and validate, header line
+        try:
+            assert countyReader.__next__() \
+                   == ['County','Latitude','Longitude','Boats','County Seat']
+        except AssertionError:
+            print('County file header does not match expected. Please ensure '\
+                  'that you chose the correct file as input, and try again. '\
+                  'Error trace:')
+            raise
+        for line in countyReader:
+            if line[0] not in counties:
+                counties[line[0]] = County(line[1], line[2], line[3])
+        del countyReader
+        # Site data
+        dialect = csv.Sniffer().sniff(lakeFile.read(1024)); lakeFile.seek(0)
+        lakeReader = csv.reader(lakeFile, dialect)
+        # Get past, and validate, header line
+        try:
+            assert lakeReader.__next__() \
+                   == ['IDNumber','Latitude','Longitude','Date', \
+                       'Parameter','Value','Attractiveness','Infested']
+        except AssertionError:
+            print('Lake file header does not match expected. Please ensure '\
+                  'that you chose the correct file as input, and try again. '\
+                  'Error trace:')
+            raise
+        for line in lakeReader:
+            if line[0] not in sites:
+                sites[line[0]] = Site(line[1], line[2])
+            if line[4] == 'pH':
+                sites[line[0]].addpH(line[5], line[3])
+            elif line[4] == 'Calcium':
+                sites[line[0]].addCa(line[5], line[3])
+
+        #Use addpH(value, date) and addCa(value, date) methods of Site()
+        #objects to add data - will only be added if date is newer than
+        #current data date. Returns boolean values to show whether data was
+        #added or not.
+
+        # Create a data matrix to hold encoded polyline strings
+        routeMatrix = full((len(counties),len(sites)), '', dtype=str)
+        
 except FileNotFoundError as e:
     print(f'\nCould not find "{e.filename}". Please check for typing errors '\
           'and try again.\nFull error trace:')
     raise
 
 
-# Internalize county and lake data from files
-#Use addpH(value, date) and addCa(value, date) methods of Site() objects to add
-#data - will only be added if date is newer than current data date. Returns
-#boolean values to show whether data was added or not.
-
-        
 # Query user's ORS API key
 print('\nBe aware that all ORS API requests will be charged against your '\
       'Directions V2 quota in OpenRouteService. The total number of requests '\
       'made will be exactly equal to the number of input counties multiplied '\
-      'by the number of input water bodies.\n'
+      'by the number of input water bodies.\n')
 key = input('Type (or paste) your API key here:\n')
 
 # Actual data retrieval
