@@ -218,8 +218,9 @@ for ci, county in enumerate(counties):
             encoded = routes['routes'][0]['geometry']
         # Address several possible errors returned by the API
         except openrouteservice.exceptions.ApiError as e:
-            print('An error occurred regarding the ORS Directions query. '\
-                  'A brief description is shown above the full error, as '\
+            print('An error occurred while making an ORS Directions query. A '\
+                  f'total of {count} queries were made prior to the error. A '\
+                  'brief description is shown above the full error, as '\
                   'reported by the server:')
             if e.args[0] == 401:
                 print('The API key is missing from the request.')
@@ -244,11 +245,14 @@ for ci, county in enumerate(counties):
         # Query successful, encoded polyline string stored in "encoded"
         routeMatrix[ci][li] = encoded
 
+# Done with data acquisition; report number of queries made to user
+print(f'Made a total of {count} ORS Directions queries.')
+
 # Export data to file by pickling
 with open(outputPath, 'a') as outputFile:
     try:
         for obj in (counties, lakes, routeMatrix):
-            pickle.dump(obj)
+            pickle.dump(obj, outputFile)
             # These need to be retrieved in order, via subsequent
             # pickle.load() calls.
     # Address the possibility of a file error (name changed, etc.)
@@ -257,4 +261,4 @@ with open(outputPath, 'a') as outputFile:
               'file. Full error trace:')
         raise
 
-print(f'Complete; made a total of {count} queries')
+print('Complete; exiting.')
