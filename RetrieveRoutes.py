@@ -189,7 +189,7 @@ try:
         #added or not.
 
         # Create a data matrix to hold encoded polyline strings
-        routeMatrix = full((len(counties),len(sites)), '', dtype=str)
+        routeMatrix = full((len(counties),len(sites)), '', dtype=object)
         
 except FileNotFoundError as e:
     print(f'\nCould not find "{e.filename}". Please check for typing errors '\
@@ -207,44 +207,54 @@ key = input('Type (or paste) your API key here:\n')
 # Actual data retrieval
 count = 0
 client = openrouteservice.Client(key=key)
+for ci, county in enumerate(counties):
+    for li, lake in enumerate(lakes):
+        # Get directions for the route and write to output file
+        try:
+            start = (counties[county].lon, counties[county].lat)
+            end = (lakes[lake].lon, lakes[lake].lat)
+            routes = client.directions((start, end))
+            count += 1
+            encoded = routes['routes'][0]['geometry']
+        # Address several possible errors returned by the API
+        except openrouteservice.exceptions.ApiError as e:
+            print('An error occurred regarding the ORS Directions query. '\
+                  'A brief description is shown above the full error, as '\
+                  'reported by the server:')
+            if e.args[0] == 401:
+                print('The API key is missing from the request.')
+            elif e.args[0] == 403:
+                print('The API key is not valid.')
+            elif e.args[0] == 404:
+                print('Unable to find requested object')
+            elif e.args[0] == 413:
+                print('The request is too large.')
+            elif e.args[0] == 500:
+                print('An unknown server error occurred.')
+            elif e.args[0] == 501:
+                print('The server cannot fulfill this request.')
+            elif e.args[0] == 503:
+                print('The server is currently unavailable due to '\
+                      'overload or maintenance.')
+            else:
+                print('An unlikely error occurred. Please try again. If '\
+                      'the issue persists, something very serious has '\
+                      'changed in the OpenRouteService API.')
+            raise
+        # Query successful, encoded polyline string stored in "encoded"
+        routeMatrix[ci][li] = encoded
+
+# Export data to file by pickling
 with open(outputPath, 'a') as outputFile:
-#    for county in counties:
-#        for lake in lakes:
-            # Get directions for the route and write to output file
-            try:
-#                routes = client.directions((start,end))
-                count += 1
-                encoded = routes['routes'][0]['geometry']
-                #Write route and orig/dest to output file
-            # Address several possible errors returned by the API
-            except openrouteservice.exceptions.ApiError as e:
-                print('An error occurred regarding the ORS Directions query. '\
-                      'A brief description is shown above the full error, as '\
-                      'reported by the server:')
-                if e.args[0] == 401:
-                    print('The API key is missing from the request.')
-                elif e.args[0] == 403:
-                    print('The API key is not valid.')
-                elif e.args[0] == 404:
-                    print('Unable to find requested object')
-                elif e.args[0] == 413:
-                    print('The request is too large.')
-                elif e.args[0] == 500:
-                    print('An unknown server error occurred.')
-                elif e.args[0] == 501:
-                    print('The server cannot fulfill this request.')
-                elif e.args[0] == 503:
-                    print('The server is currently unavailable due to '\
-                          'overload or maintenance.')
-                else:
-                    print('An unlikely error occurred. Please try again. If '\
-                          'the issue persists, something very serious has '\
-                          'changed in the OpenRouteService API.')
-                raise
-            # And the possibility of a file error
-            except IOError:
-                print('An error occurred while writing data to the output '\
-                      'file. Full error trace:')
-                raise
+    try:
+        for obj in (counties, lakes, routeMatrix):
+            pickle.dump(obj)
+            # These need to be retrieved in order, via subsequent
+            # pickle.load() calls.
+    # Address the possibility of a file error (name changed, etc.)
+    except IOError:
+        print('An error occurred while writing data to the output '\
+              'file. Full error trace:')
+        raise
 
 print(f'Complete; made a total of {count} queries')
