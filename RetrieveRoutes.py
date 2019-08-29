@@ -18,6 +18,7 @@ import tkinter as tk
 from tkinter.filedialog import askopenfilename, asksaveasfilename
 from numpy import full
 import csv
+from datetime import date
 
 # Define Site and County classes
 class Site():
@@ -59,7 +60,7 @@ class Site():
         self._pHDate = newDate
 
     def addpH(newpH, newDate):
-        if newDate > self._pHDate:
+        if (self._pHDate == None) or (newDate > self._pHDate):
             self._pH = newpH
             self._pHDate = newDate
             return True
@@ -82,7 +83,7 @@ class Site():
         self._calciumDate = newDate
 
     def addCa(newCa, newDate):
-        if newDate > self._calciumDate:
+        if (self._calciumDate == None) or (newDate > self._calciumDate):
             self._calcium = newCa
             self._calciumDate = newDate
             return True
@@ -179,9 +180,9 @@ try:
             if line[0] not in sites:
                 sites[line[0]] = Site(line[1], line[2])
             if line[4] == 'pH':
-                sites[line[0]].addpH(line[5], line[3])
+                sites[line[0]].addpH(line[5], date.fromisoformat(line[3]))
             elif line[4] == 'Calcium':
-                sites[line[0]].addCa(line[5], line[3])
+                sites[line[0]].addCa(line[5], date.fromisoformat(line[3]))
 
         #Use addpH(value, date) and addCa(value, date) methods of Site()
         #objects to add data - will only be added if date is newer than
