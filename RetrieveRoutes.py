@@ -59,7 +59,7 @@ class Site():
     def pHDate(self, newDate):
         self._pHDate = newDate
 
-    def addpH(newpH, newDate):
+    def addpH(self, newpH, newDate):
         if (self._pHDate == None) or (newDate > self._pHDate):
             self._pH = newpH
             self._pHDate = newDate
@@ -82,7 +82,7 @@ class Site():
     def calciumDate(self, newDate):
         self._calciumDate = newDate
 
-    def addCa(newCa, newDate):
+    def addCa(self, newCa, newDate):
         if (self._calciumDate == None) or (newDate > self._calciumDate):
             self._calcium = newCa
             self._calciumDate = newDate
@@ -119,6 +119,7 @@ print(f'OpenRouteService Route Retrieval Program {version}\n')
 
 
 # Request county, lake, and output files
+tk.Tk().withdraw()
 lakePath,countyPath,outputPath = '','',''
 while lakePath == '':
     print('Select the LAKE file in the "open" window...')
@@ -161,7 +162,8 @@ try:
             raise
         for line in countyReader:
             if line[0] not in counties:
-                counties[line[0]] = County(line[1], line[2], line[3])
+                counties[line[0]] = County(float(line[1]), float(line[2]),
+                                           int(line[3]))
         del countyReader
         # Site data
         dialect = csv.Sniffer().sniff(lakeFile.read(1024)); lakeFile.seek(0)
@@ -178,11 +180,11 @@ try:
             raise
         for line in lakeReader:
             if line[0] not in sites:
-                sites[line[0]] = Site(line[1], line[2])
+                sites[line[0]] = Site(float(line[1]), float(line[2]))
             if line[4] == 'pH':
-                sites[line[0]].addpH(line[5], date.fromisoformat(line[3]))
+                sites[line[0]].addpH(float(line[5]),date.fromisoformat(line[3]))
             elif line[4] == 'Calcium':
-                sites[line[0]].addCa(line[5], date.fromisoformat(line[3]))
+                sites[line[0]].addCa(float(line[5]),date.fromisoformat(line[3]))
 
         #Use addpH(value, date) and addCa(value, date) methods of Site()
         #objects to add data - will only be added if date is newer than
@@ -209,11 +211,11 @@ key = input('Type (or paste) your API key here:\n')
 count = 0
 client = openrouteservice.Client(key=key)
 for ci, county in enumerate(counties):
-    for li, lake in enumerate(lakes):
+    for li, site in enumerate(sites):
         # Get directions for the route and write to output file
         try:
             start = (counties[county].lon, counties[county].lat)
-            end = (lakes[lake].lon, lakes[lake].lat)
+            end = (sites[site].lon, sites[site].lat)
             routes = client.directions((start, end))
             count += 1
             encoded = routes['routes'][0]['geometry']
@@ -229,6 +231,19 @@ for ci, county in enumerate(counties):
                 print('The API key is not valid.')
             elif e.args[0] == 404:
                 print('Unable to find requested object')
+                if e.args[1]['error']['code'] == 2010:
+                    if e.args[1]['error']['message'][18] == '0':
+                        # The first point (the county) cannot be found
+                        #Add to a set to:
+                        ##Remove the county from the dict
+                        ##Remove its row from the matrix
+                        pass
+                    elif e.args[1]['error']['message'][18] == '1':
+                        # The second point (the site) cannot be found
+                        #Add to a set to:
+                        ##Remove the site from the dict
+                        ##Remove its column from the matrix
+                        pass
             elif e.args[0] == 413:
                 print('The request is too large.')
             elif e.args[0] == 500:
@@ -249,10 +264,13 @@ for ci, county in enumerate(counties):
 # Done with data acquisition; report number of queries made to user
 print(f'Made a total of {count} ORS Directions queries.')
 
+# Remove problematic locations (counties or sites) from dicts and matrix
+#According to (probably a set of) problematic locations from above
+
 # Export data to file by pickling
 with open(outputPath, 'a') as outputFile:
     try:
-        for obj in (counties, lakes, routeMatrix):
+        for obj in (counties, sites, routeMatrix):
             pickle.dump(obj, outputFile)
             # These need to be retrieved in order, via subsequent
             # pickle.load() calls.
