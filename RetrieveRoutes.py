@@ -16,7 +16,7 @@ version = 'v0.1'
 import openrouteservice
 import tkinter as tk
 from tkinter.filedialog import askopenfilename, asksaveasfilename
-from numpy import full
+from numpy import full, delete
 import csv
 from datetime import date
 
@@ -209,9 +209,13 @@ key = input('Type (or paste) your API key here:\n')
 
 # Actual data retrieval
 count = 0
+badCounties, badSites = set(), set()
 client = openrouteservice.Client(key=key)
 for ci, county in enumerate(counties):
-    for li, site in enumerate(sites):
+    for si, site in enumerate(sites):
+        if si in badSites:
+            # Leave routeMatrix[ci][si] unaltered (empty)
+            continue
         # Get directions for the route and write to output file
         try:
             start = (counties[county].lon, counties[county].lat)
@@ -234,16 +238,12 @@ for ci, county in enumerate(counties):
                 if e.args[1]['error']['code'] == 2010:
                     if e.args[1]['error']['message'][18] == '0':
                         # The first point (the county) cannot be found
-                        #Add to a set to:
-                        ##Remove the county from the dict
-                        ##Remove its row from the matrix
-                        pass
+                        badCounties.add(ci)
+                        break
                     elif e.args[1]['error']['message'][18] == '1':
                         # The second point (the site) cannot be found
-                        #Add to a set to:
-                        ##Remove the site from the dict
-                        ##Remove its column from the matrix
-                        pass
+                        badSites.add(si)
+                        continue
             elif e.args[0] == 413:
                 print('The request is too large.')
             elif e.args[0] == 500:
@@ -259,13 +259,27 @@ for ci, county in enumerate(counties):
                       'changed in the OpenRouteService API.')
             raise
         # Query successful, encoded polyline string stored in "encoded"
-        routeMatrix[ci][li] = encoded
+        routeMatrix[ci][si] = encoded
+    # Can get here from the break when a bad county is detected, or when done
+    # with all sites for the current county. Either way, continue to the next
+    # county.
 
 # Done with data acquisition; report number of queries made to user
 print(f'Made a total of {count} ORS Directions queries.')
 
 # Remove problematic locations (counties or sites) from dicts and matrix
-#According to (probably a set of) problematic locations from above
+cKeys = list(counties.keys())
+for i, k in enumerate(cKeys):
+    if i in badCounties:
+        del counties[k]
+del cKeys
+sKeys = list(counties.keys())
+for i, k in enumerate(sKeys):
+    if i in badSites:
+        del sites[k]
+del sKeys
+routeMatrix = delete(routeMatrix, list(badCounties), 0)
+routeMatrix = delete(routeMatrix, list(badSites), 1)
 
 # Export data to file by pickling
 with open(outputPath, 'a') as outputFile:
