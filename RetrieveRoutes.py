@@ -9,7 +9,7 @@
 # representing the encoded polyline as its only argument. This would be done in
 # the program utilizing the stored data.
 
-version = 'v0.1'
+version = 'v0.2'
 
 
 # Import required libraries
@@ -89,6 +89,7 @@ class Site():
             return True
         return False
 
+
 class County():
     '''
     County object; contains information for counties.
@@ -115,6 +116,7 @@ class County():
     def boats(self, new_boats):
         self._boats = new_boats
 
+
 print(f'OpenRouteService Route Retrieval Program {version}\n')
 
 
@@ -122,18 +124,15 @@ print(f'OpenRouteService Route Retrieval Program {version}\n')
 tk.Tk().withdraw()
 lakePath,countyPath,outputPath = '','',''
 while lakePath == '':
-    print('Select the LAKE file in the "open" window...')
+    print('Select the LAKE file in the "Open" window...')
     lakePath = askopenfilename()
 while countyPath == '':
     print('Select the COUNTY file in the "Open" window...')
     countyPath = askopenfilename()
 while outputPath == '':
     print('Type the name of the new OUTPUT file in the window...')
-    outputPath = asksaveasfilename(defaultextension='.csv', filetypes=(
-        ('CSV (Comma-Separated Values) File','*.csv'),
-        ('TSV (Tab-Separated Values) File','*.tsv'),
-        ('All Files','*.*')))
-    outputSep = '\t' if outputPath.endswith('.tsv') else ','
+    outputPath = asksaveasfilename(defaultextension='.pickle', filetypes=(
+        ('Pickle File','*.pickle'),('All Files','*.*')))
 
 # (Try to) Open input files
 try:
@@ -186,14 +185,8 @@ try:
             elif line[4] == 'Calcium':
                 sites[line[0]].addCa(float(line[5]),date.fromisoformat(line[3]))
 
-        #Use addpH(value, date) and addCa(value, date) methods of Site()
-        #objects to add data - will only be added if date is newer than
-        #current data date. Returns boolean values to show whether data was
-        #added or not.
-
         # Create a data matrix to hold encoded polyline strings
         routeMatrix = full((len(counties),len(sites)), '', dtype=object)
-        
 except FileNotFoundError as e:
     print(f'\nCould not find "{e.filename}". Please check for typing errors '\
           'and try again.\nFull error trace:')
@@ -258,6 +251,9 @@ for ci, county in enumerate(counties):
                       'the issue persists, something very serious has '\
                       'changed in the OpenRouteService API.')
             raise
+        except openrouteservice.exceptions.TransportError:
+            raise RuntimeError('An HTTPS error occurred. You may be offline. '\
+                               'Please check your connection and try again.')
         # Query successful, encoded polyline string stored in "encoded"
         routeMatrix[ci][si] = encoded
     # Can get here from the break when a bad county is detected, or when done
