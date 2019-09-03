@@ -218,9 +218,9 @@ for ci, county in enumerate(counties):
             encoded = routes['routes'][0]['geometry']
         # Address several possible errors returned by the API
         except openrouteservice.exceptions.ApiError as e:
-            print('An error occurred while making an ORS Directions query. A '\
-                  f'total of {count} queries were made prior to the error. A '\
-                  'brief description is shown above the full error, as '\
+            print('\nAn error occurred while making an ORS Directions query. '\
+                  f'A total of {count} queries were made prior to the error. '\
+                  'A brief description is shown above the full error, as '\
                   'reported by the server:')
             if e.args[0] == 401:
                 print('The API key is missing from the request.')
@@ -232,24 +232,28 @@ for ci, county in enumerate(counties):
                     if e.args[1]['error']['message'][18] == '0':
                         # The first point (the county) cannot be found
                         badCounties.add(ci)
+                        print('Unroutable county found; skipping...')
                         break
                     elif e.args[1]['error']['message'][18] == '1':
                         # The second point (the site) cannot be found
                         badSites.add(si)
+                        print('Unroutable site found; skipping...')
                         continue
             elif e.args[0] == 413:
                 print('The request is too large.')
+            elif e.args[0] == 429:
+                print('Query limit exceeded.')
             elif e.args[0] == 500:
                 print('An unknown server error occurred.')
             elif e.args[0] == 501:
                 print('The server cannot fulfill this request.')
             elif e.args[0] == 503:
-                print('The server is currently unavailable due to '\
-                      'overload or maintenance.')
+                print('The server is currently unavailable due to overload '\
+                      'or maintenance.')
             else:
-                print('An unlikely error occurred. Please try again. If '\
-                      'the issue persists, something very serious has '\
-                      'changed in the OpenRouteService API.')
+                print('An unlikely error occurred. Please try again. If the '\
+                      'issue persists, something very serious has changed in '\
+                      'the OpenRouteService API.')
             raise
         except openrouteservice.exceptions.TransportError:
             raise RuntimeError('An HTTPS error occurred. You may be offline. '\
