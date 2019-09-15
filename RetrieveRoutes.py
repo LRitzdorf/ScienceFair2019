@@ -19,6 +19,8 @@ from tkinter.filedialog import askopenfilename, asksaveasfilename
 from numpy import full, delete
 import csv
 from datetime import date
+from time import time, sleep
+import pickle
 
 # Define Site and County classes
 class Site():
@@ -193,22 +195,43 @@ except FileNotFoundError as e:
     raise
 
 
-# Query user's ORS API key
+# Query user's ORS API key and ratelimit
 print('\nBe aware that all ORS API requests will be charged against your '\
       'Directions V2 quota in OpenRouteService. The total number of requests '\
-      'made will be exactly equal to the number of input counties multiplied '\
-      'by the number of input water bodies.\n')
+      'made will be less than or equal to the number of input counties '\
+      'multiplied by the number of input water bodies.\n')
 key = input('Type (or paste) your API key here:\n')
+while True:
+    try:
+        ratelimit = int(input('Type the number of queries per minute your '\
+                              'key is allowed to use (its rate limit - '\
+                              'usually 40, or use 0 for no limit):\n'))
+        if ratelimit < 0:
+            raise ValueError
+        break
+    except ValueError:
+        print('Must be an integer greater than zero.')
 
 # Actual data retrieval
 count = 0
 badCounties, badSites = set(), set()
-client = openrouteservice.Client(key=key)
+start_time = time()
+client = openrouteservice.Client(key=key, retry_over_query_limit=True)
 for ci, county in enumerate(counties):
     for si, site in enumerate(sites):
         if si in badSites:
             # Leave routeMatrix[ci][si] unaltered (empty)
             continue
+        # Ratelimiting
+        if ratelimit > 0:
+            # Wait for remainder of averge query time
+            remain = start_time + (60 / ratelimit) - time()
+            if remain > 0:
+                sleep(remain)
+            start_time = time()
+        elif ratelimit == 0:
+            # No rate limit; continue
+            pass
         # Get directions for the route and write to output file
         try:
             start = (counties[county].lon, counties[county].lat)
@@ -273,7 +296,7 @@ for i, k in enumerate(cKeys):
     if i in badCounties:
         del counties[k]
 del cKeys
-sKeys = list(counties.keys())
+sKeys = list(sites.keys())
 for i, k in enumerate(sKeys):
     if i in badSites:
         del sites[k]
@@ -282,7 +305,7 @@ routeMatrix = delete(routeMatrix, list(badCounties), 0)
 routeMatrix = delete(routeMatrix, list(badSites), 1)
 
 # Export data to file by pickling
-with open(outputPath, 'a') as outputFile:
+with open(outputPath, 'a+b') as outputFile:
     try:
         for obj in (counties, sites, routeMatrix):
             pickle.dump(obj, outputFile)
