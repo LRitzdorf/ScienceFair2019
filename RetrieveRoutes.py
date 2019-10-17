@@ -180,12 +180,15 @@ try:
                   'Error trace:')
             raise
         for line in lakeReader:
-            if line[0] not in sites:
-                sites[line[0]] = Site(float(line[1]), float(line[2]))
-            if line[4] == 'pH':
-                sites[line[0]].addpH(float(line[5]),date.fromisoformat(line[3]))
-            elif line[4] == 'Calcium':
-                sites[line[0]].addCa(float(line[5]),date.fromisoformat(line[3]))
+            try:
+                if line[0] not in sites:
+                    sites[line[0]] = Site(float(line[1]), float(line[2]))
+                if line[4] == 'pH':
+                    sites[line[0]].addpH(float(line[5]),date.fromisoformat(line[3]))
+                elif line[4] == 'Calcium':
+                    sites[line[0]].addCa(float(line[5]),date.fromisoformat(line[3]))
+            except ValueError:
+                pass
 
         # Create a data matrix to hold encoded polyline strings
         routeMatrix = full((len(counties),len(sites)), '', dtype=object)
