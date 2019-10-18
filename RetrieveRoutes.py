@@ -124,17 +124,19 @@ print(f'OpenRouteService Route Retrieval Program {version}\n')
 
 # Request county, lake, and output files
 tk.Tk().withdraw()
-lakePath,countyPath,outputPath = '','',''
-while lakePath == '':
-    print('Select the LAKE file in the "Open" window...')
-    lakePath = askopenfilename()
-while countyPath == '':
-    print('Select the COUNTY file in the "Open" window...')
-    countyPath = askopenfilename()
-while outputPath == '':
-    print('Type the name of the new OUTPUT file in the window...')
-    outputPath = asksaveasfilename(defaultextension='.pickle', filetypes=(
-        ('Pickle File','*.pickle'),('All Files','*.*')))
+print('Select the LAKE file in the "Open" window...')
+lakePath = askopenfilename()
+if lakePath == '':
+    print('No file selected; cancelling...'); exit()
+print('Select the COUNTY file in the "Open" window...')
+countyPath = askopenfilename()
+if countyPath == '':
+    print('No file selected; cancelling...'); exit()
+print('Type the name of the new OUTPUT file in the window...')
+outputPath = asksaveasfilename(defaultextension='.pickle', filetypes=(
+    ('Pickle File','*.pickle'),('All Files','*.*')))
+if outputPath == '':
+    print('No file selected; cancelling...'); exit()
 
 # (Try to) Open input files
 try:
