@@ -254,23 +254,18 @@ for ci, county in enumerate(counties):
                 print('The API key is not valid.')
             elif e.args[0] == 404:
                 print('Unable to find requested object')
-                if e.args[1]['error']['code'] == 2010:
-                    if e.args[1]['error']['message'][18] == '0':
-                        # The first point (the county) cannot be found
-                        badCounties.add(ci)
-                        print('Unroutable county found; skipping...')
-                        break
-                    elif e.args[1]['error']['message'][18] == '1':
-                        # The second point (the site) cannot be found
-                        badSites.add(si)
-                        print('Unroutable site found; skipping...')
-                        continue
             elif e.args[0] == 413:
                 print('The request is too large.')
             elif e.args[0] == 429:
                 print('Query limit exceeded.')
             elif e.args[0] == 500:
-                print('An unknown server error occurred.')
+                if e.args[1]['error']['code'] == 2099:
+                    # Assume that the second point (the site) cannot be found
+                    badSites.add(si)
+                    print('Unroutable site (assumed) found; skipping...')
+                    continue
+                else:
+                    print('An unknown server error occurred.')
             elif e.args[0] == 501:
                 print('The server cannot fulfill this request.')
             elif e.args[0] == 503:
