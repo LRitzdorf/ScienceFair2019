@@ -134,7 +134,7 @@ if countyPath == '':
     print('No file selected; cancelling...'); exit()
 print('Type the name of the new OUTPUT file in the window...')
 outputPath = asksaveasfilename(defaultextension='.pickle', filetypes=(
-    ('Pickle File','*.pickle'),('All Files','*.*')))
+    ('Pickle File','*.pkl'),('All Files','*.*')))
 if outputPath == '':
     print('No file selected; cancelling...'); exit()
 
