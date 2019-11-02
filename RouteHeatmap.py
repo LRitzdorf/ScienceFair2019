@@ -1,34 +1,37 @@
 # -*- coding: utf-8 -*-
 
-# Create a heatmap rendering of predicted boater travel in a given location and
-# based on a provided network of sources (counties) and sinks (lakes), in order
-# to create an overall boat-travel intensity map.
+# Computational model of Dreissenid mussel spread in a given water system,
+# built as a QGIS processing script.
+
+# The *.pickle output file created by RetrieveRoutes.py is to be used as the
+# "Pickled Routes" input item.
+
+# Computes mussel travel, as facilitated by boat traffic, in the given water
+# system, then outputs the routes traveled by contaminated boats as a heatmap
+# layer, with more heavily traveled routes having higher weights.
 
 from PyQt5.QtCore import QCoreApplication, QVariant
 from PyQt5.QtGui import QColor
 from qgis.core import *
 import processing
-import openrouteservice
+from openrouteservice.convert import decode_polyline
+import pickle
 
-# Create necessary functions
-# Here
+# Define initial variables
 
-class MyProcessingAlgorithm(QgsProcessingAlgorithm):
-    """
-    Create a heatmap rendering of predicted boater travel in a given location
-    and based on a provided network of sources (counties) and sinks (lakes), in
-    order to create an overall boat-travel intensity map.
-    """
 
-    # Constants used to refer to parameters and outputs. They will be
-    # used when calling the algorithm from another algorithm, or when
-    # calling from the QGIS console.
+class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
+    '''
+    Computes mussel travel, as facilitated by boat traffic, in the given water
+    system, then outputs the routes traveled by contaminated boats as a heatmap
+    layer, with more heavily traveled routes having higher weights.
+    '''
 
-    INPUT = 'INPUT'
-    COUNTIES = 'COUNTIES'
-    ORS_API_KEY = ''
-    ROUTES = 'ROUTES'
-    OUTPUT = 'OUTPUT'
+    INPUT =        'INPUT'         # Lake file
+    COUNTIES =     'COUNTIES'      # County file
+    ROUTES =       'ROUTES'        # Pickled route data file
+    OUTPUT =       'OUTPUT'        # Heatmap layer
+    ROUTE_OUTPUT = 'ROUTE_OUTPUT'  # Route layer (not as a heatmap)
 
     def tr(self, string):
         """
@@ -37,7 +40,7 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         return QCoreApplication.translate('Processing', string)
 
     def createInstance(self):
-        return MyProcessingAlgorithm()
+        return MusselSpreadSimulationAlgorithm()
 
     def name(self):
         """
@@ -47,14 +50,14 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         lowercase alphanumeric characters only and no spaces or other
         formatting characters.
         """
-        return 'boattravelheatmap'
+        return 'musselspreadsimulation'
 
     def displayName(self):
         """
         Returns the translated algorithm name, which should be used for any
         user-visible display of the algorithm name.
         """
-        return self.tr('Boat Travel Heatmap')
+        return self.tr('Mussel Spread Simulation')
 
     def group(self):
         """
@@ -73,6 +76,9 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         """
         return 'sciencefairtwentynineteen'
 
+    def tags(self):
+        return ['mussels', 'gravity model', 'simulation']
+
     def shortHelpString(self):
         """
         Returns a localised short helper string for the algorithm. This string
@@ -81,183 +87,173 @@ class MyProcessingAlgorithm(QgsProcessingAlgorithm):
         """
         return self.tr('''
             Create a heatmap of predicted boater travel in a real-world water
-            system, based on a gravity model and data from the OpenRouteService
-            API.
+            system, based on a gravity model and route data.
 
-            The inputs should be point layers.
+            All inputs are files. The first two should contain lake and county
+            data, in that order. The third should be the .pickle file created
+            by the RetrieveRoutes.py script.
 
-            The first should represent the lakes to be analyzed, and have
-            attributes named "Calcium", "pH", and "Attractiveness", with the
-            former expressed in milligrams per liter, and the latter being the
-            attraction parameter for the gravity model.
-
-            The second should represent counties in the area to be analyzed,
-            and have attributes "Name" and "Boats", containing the county name
-            and the number of boats to which the county is home.
-
-            An OpenRouteService API key is required to use this algorithm.
-            Enter your API key as the third input. To sign up for API access,
-            visit https://openrouteservice.org/dev/#/signup.
+            The output will be a point layer with heatmap styling, showing
+            routes over which contaminated boats are deemed likely to travel.
+            Higher-traffic routes will be given a higher weight.
             ''')
 
     def initAlgorithm(self, config=None):
         """
-        Define the inputs and output of the algorithm, along with some other
+        Define the inputs and outputs of the algorithm, along with some other
         properties.
         """
 
-        # Add a parameter for the lake layer
-        self.addParameter(
-            QgsProcessingParameterFeatureSource(
-                self.INPUT,
-                self.tr('Lake input layer'),
-                [QgsProcessing.TypeVectorPoint]
-            )
-        )
+        # Add a parameter for the lake input file
+        self.addParameter(QgsProcessingParameterFile(
+            INPUT,
+            self.tr('Lake Input File'),
+            extension='csv'
+        ))
 
-        # Add a parameter for the county layer
-        self.addParameter(
-            QgsProcessingParameterFeatureSource(
-                self.COUNTIES,
-                self.tr('County input layer'),
-                [QgsProcessing.TypeVectorPoint]
-            )
-        )
+        # Add a parameter for the county input file
+        self.addParameter(QgsProcessingParameterFile(
+            COUNTIES,
+            self.tr('County Input File'),
+            extension='csv'
+        ))
 
-        # Add a text input for the user's OpenRouteService API key.
-        self.addParameter(
-            QgsProcessingParameterString(
-                self.ORS_API_KEY,
-                self.tr('Your OpenRouteService API Key')
-            )
-        )
+        # Add a parameter for the pickled routes input file
+        self.addParameter(QgsProcessingParameterFile(
+            ROUTES,
+            self.tr('Pickled Route Data File (from RetrieveRoutes.py)'),
+            extension='pkl'
+        ))
 
-        # Add an output for the route layer
-        self.addParameter(
-            QgsProcessingParameterFeatureSink(
-                self.ROUTES,
-                self.tr('Route Layer')
-            )
-        )
+        # Add a new vector layer for the output heatmap
+        self.addParameter(QgsProcessingParameterVectorDestination(
+            OUTPUT,
+            self.tr('Output Heatmap Layer'),
+            QgsProcessing.TypeVectorPoint
+        ))
 
-        # Add a feature sink in which to store our processed features (this
-        # usually takes the form of a newly created vector layer when the
-        # algorithm is run in QGIS).
-        self.addParameter(
-            QgsProcessingParameterFeatureSink(
-                self.OUTPUT,
-                self.tr('Boat Traffic Density Heatmap')
-            )
-        )
+        # Add a new feature sink (vector layer) for the route, not as a heatmap
+        self.addParameter(QgsProcessingParameterFeatureSink(
+            ROUTE_OUTPUT,
+            self.tr('Routes Layer (not as a heatmap)'),
+            QgsProcessing.TypeVectorLine
+        ))
+
+        # Consider adding additional vector output layers for lakes and county
+        # centers (QgsProcessing.TypeVectorPoint)
 
     def processAlgorithm(self, parameters, context, feedback):
         """
         Here is where the processing itself takes place.
         """
 
-        # Retrieve the source layers.
-        lakeSource = self.parameterAsSource(
-            parameters,
-            self.INPUT,
-            context
-        )
-        countySource = self.parameterAsSource(
-            parameters,
-            self.COUNTIES,
-            context
-        )
+        # Retrieve parameters:
+        feedback.setProgressText('Retrieving input parameters...')
+        # Lake input file
+        pass    # Not currently needed
 
-        # Throw an exception if either source was not found.
-        if lakeSource is None:
-            raise QgsProcessingException(
-                self.invalidSourceError(parameters, self.INPUT))
-        if countySource is None:
-            raise QgsProcessingException(
-                self.invalidSourceError(parameters, self.COUNTIES))
+        # County input file
+        pass    # Not currently needed
 
-        feedback.pushInfo('Successfully loaded lake and county source files')
-
-        # Record the API key.
-        APIKey = self.parameterAsString(
+        # Pickled routes file
+        pickledFileName = self.parameterAsFile(
             parameters,
-            self.ORS_API_KEY,
+            ROUTES,
             context
         )
 
-        # Get a sink for the routes generated, with some attributes
-        fields = QgsFields()
-        fields.append(QgsField('County', QVariant.String))
-        fields.append(QgsField('Lake', QVariant.String))
-        fields.append(QgsField('Habitability', QVariant.Float))
+        # Sink and ID for the route output layer
+        # Consider adding field definitions:
+        ##fields = QgsFields()
+        ##fields.append(QgsField('County', QVariant.String))
+        ##fields.append(QgsField('Lake', QVariant.String))
+        ##fields.append(QgsField('Habitability', QVariant.Float))
+        ##fields.append(QgsField('Weight', QVariant.Float))
         (routeSink, routeSinkID) = self.parameterAsSink(
             parameters,
-            self.ROUTES,
+            ROUTE_OUTPUT,
             context,
             fields,
-            QgsWkbTypes.MultiLineString,
-            QgsCoordinateReferenceSystem('EPSG:4326')
+            geometryType=QgsWkbTypes.LineString,
+            crs=QgsCoordinateReferenceSystem('EPSG:4326')
         )
 
-        # And get the description of the output layer (most likely 'memory:').
-        outDesc = self.parameterAsOutputLayer(
-            parameters,
-            self.OUTPUT,
-            context
-        )
+        # Internalize pickled routes
+        feedback.setProgressText('Loading pickled routes...')
+        # Define classes first to allow successful unpickling:
+        class Site():
+            pass
+        class County():
+            pass
+        # A rather complex process to allow items to be unpickled and assigned
+        # in order:
+        counties = None; sites = None; routeMatrix = None
+        l = [counties, sites, routeMatrix]
+        feedback.setProgressText('Retrieving pickled routes from file...')
+        with open(pickledFileName, 'r+b') as pickledFile:
+            for i in range(len(l)):
+                l[i] = pickle.load(f)
+        (counties, sites, routeMatrix) = tuple(l)
+        del l, i
 
-        # Variable definitions
-        failures = 0
+        # Begin Processing
+        feedback.pushInfo('Beginning processing')
 
-        # Begin processing
-        client = openrouteservice.Client(key=APIKey)
-        feedback.setProgressText('Loading routes...')
-        #TODO: Begin loop here
-        #TODO: Replace these with county and lake coordinates (lon, lat)
-        start = (-114.31506,48.20218)
-        end = (-114.63478,48.19400)
-        #TODO: Set the progress bar
-        try:
-            routes = client.directions((start,end))
-        except openrouteservice.exceptions.ApiError as e:
-            feedback.reportError(
-                'The OpenRouteService API encountered an error.\n' + repr(e),
-                fatalError=True)
-            if e.args[0] == 403: feedback.pushDebugInfo(
-                'The API key you entered may be incorrect, or \
-                you may have exhausted your API request quota.')
-            return {self.OUTPUT: None}
-        encoded = routes['routes'][0]['geometry']
-        decoded = openrouteservice.convert.decode_polyline(encoded)
-        feat = QgsFeature()
-        feat.setGeometry(QgsGeometry.fromPolyline(
-            [QgsPoint(pt[0],pt[1]) for pt in decoded['coordinates']]))
-        routeSink.addFeature(feat, QgsFeatureSink.FastInsert)
-        #TODO: End loop here
-        feedback.setProgressText('\nDensifying paths...')
-        result = processing.run('qgis:densifygeometriesgivenaninterval', {
-                'INPUT':routeSinkID,
-                'INTERVAL':0.001,
-                'OUTPUT':'memory:'
-                }, context=context, feedback=feedback)
-        densified = result['OUTPUT']
-        feedback.setProgressText('\nExtracting vertices...')
-        result2 = processing.run('native:extractvertices', {
-                'INPUT':densified,
-                'OUTPUT':outDesc
-                }, context=context, feedback=feedback)
-        # Create the output layer.
-        outLayer = result2['OUTPUT'].clone()
-        # Set up the heatmap renderer as desired.
-        feedback.setProgressText('\nSetting up renderer...')
+        # Add route polylines to route layer
+        feedback.setProgressText('Adding routes to route layer...')
+        for ci, county in enumerate(counties):
+            for si, site in enumerate(sites):
+                encoded = routeMatrix[ci][si]
+                decoded = decode_polyline(encoded)
+                feat = QgsFeature()
+                # Remember to add fields here, with values from site._[attr]
+                feat.setGeometry(QgsGeometry.fromPolyline(
+                    [QgsPoint(pt[0], pt[1]) for pt in decoded['coordinates']]
+                ))
+                routeSink.addFeature(feat)
+        routeSink.FlushBuffer()
+        # All routes are now in routeSink as polyline features
+
+        # Begin Model
+        feedback.pushInfo('Starting Monte Carlo model')
+        # Actual model code goes here
+        # End Model
+        feedback.pushInfo('Completed Monte Carlo model')
+
+        # Heatmap processing (based on results of Monte Carlo model)
+        feedback.setProgressText('Building heatmap from model results...')
+        # Densify routes layer
+        densified = processing.run('qgis:densifygeometriesgivenaninterval',
+                                   {'INPUT': routeSinkID,
+                                    'INTERVAL': 0.001,
+                                    'OUTPUT': 'memory:'},
+                                   context=context, feedback=feedback,
+                                   is_child_algorithm=True)
+
+        # Extract vertices
+        # ^ Preserve fields for each polyline, pass on to points (research)
+        vertices = processing.run('native:extractvertices',
+                                  {'INPUT': densified['OUTPUT'],
+                                   'OUTPUT': parameters[OUTPUT]},
+                                  context=context, feedback=feedback,
+                                  is_child_algorithm=True)
+        del densified
+
+        # Set up heatmap renderer
+        # ^ Set weight for each point from field(s) (research)
         rndrr = QgsHeatmapRenderer()
         rndrr.setColorRamp(QgsGradientColorRamp(
             QColor('transparent'),QColor(227,26,28)))
         rndrr.setRadiusUnit(1)
         rndrr.setRadius(500)
-        # Set the output layer's renderer to the heatmap renderer just defined.
-        outLayer.setRenderer(rndrr)
-        # Done with processing.
-        feedback.setProgressText('\nDone with processing.')
 
-        # Return the output layer.
-        return {self.ROUTES: routeSinkID, self.OUTPUT: outLayer.id()}
+        # Assign heatmap renderer to extracted vertices layer
+        QgsProcessingUtils.mapLayerFromString(vertices['OUTPUT'], context
+            ).setRenderer(rndrr)
+
+        # End Processing
+        feedback.pushInfo('Processing complete; finishing up...')
+
+        # Return output layers
+        return {OUTPUT:       vertices['OUTPUT'],
+                ROUTE_OUTPUT: routeSinkID}
