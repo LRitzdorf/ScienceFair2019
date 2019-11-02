@@ -1,2 +1,5 @@
 # Symlinks
 *.lnk
+
+# CPython cache files
+__pycache__
