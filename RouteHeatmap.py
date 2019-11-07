@@ -15,6 +15,7 @@ from PyQt5.QtGui import QColor
 from qgis.core import *
 import processing
 
+
 class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     '''
     Computes mussel travel, as facilitated by boat traffic, in the given water
@@ -30,6 +31,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     PCT_DECONT =   'PCT_DECONT'    # Percent of all boats decontaminated
     OUTPUT =       'OUTPUT'        # Heatmap layer
     ROUTE_OUTPUT = 'ROUTE_OUTPUT'  # Route layer (not as a heatmap)
+
+    iterationsPerYear = 8  # Number of trips boats are assumed to make per year
 
     def tr(self, string):
         '''
@@ -83,18 +86,20 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         should provide a basic description about what the algorithm does and the
         parameters and outputs associated with it.
         '''
-        return self.tr('''
-            Create a heatmap of predicted boater travel in a real-world water
+        return self.tr(
+            '''
+            Create a heatmap of predicted boater travel in a real-world water \
             system, based on a gravity model and route data.
 
-            All inputs are files. The first two should contain lake and county
-            data, in that order. The third should be the .pickle file created
-            by the RetrieveRoutes.py script.
+            All inputs are files. The first two should contain lake and county \
+            data, in that order. The third should be the .pkl file created by \
+            the RetrieveRoutes.py script.
 
-            The output will be a point layer with heatmap styling, showing
-            routes over which contaminated boats are deemed likely to travel.
+            The output will be a point layer with heatmap styling, showing \
+            routes over which contaminated boats are deemed likely to travel. \
             Higher-traffic routes will be given a higher weight.
-            ''')
+            '''
+        )
 
 
     def initAlgorithm(self, config=None):
@@ -105,42 +110,42 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Add a parameter for the lake input file
         self.addParameter(QgsProcessingParameterFile(
-            INPUT,
+            self.INPUT,
             self.tr('Lake Input File'),
             extension='csv'
         ))
 
         # Add a parameter for the county input file
         self.addParameter(QgsProcessingParameterFile(
-            COUNTIES,
+            self.COUNTIES,
             self.tr('County Input File'),
             extension='csv'
         ))
 
         # Add a parameter for the pickled routes input file
         self.addParameter(QgsProcessingParameterFile(
-            ROUTES,
+            self.ROUTES,
             self.tr('Pickled Route Data File (from RetrieveRoutes.py)'),
             extension='pkl'
         ))
 
         # Add a new vector layer for the output heatmap
         self.addParameter(QgsProcessingParameterVectorDestination(
-            OUTPUT,
+            self.OUTPUT,
             self.tr('Output Heatmap Layer'),
             QgsProcessing.TypeVectorPoint
         ))
 
         # Add a new feature sink (vector layer) for the route, not as a heatmap
         self.addParameter(QgsProcessingParameterFeatureSink(
-            ROUTE_OUTPUT,
+            self.ROUTE_OUTPUT,
             self.tr('Routes Layer (not as a heatmap)'),
             QgsProcessing.TypeVectorLine
         ))
 
         # Add a parameter for the number of Monte Carlo loops to run
         self.addParameter(QgsProcessingParameterNumber(
-            MC_LOOPS,
+            self.MC_LOOPS,
             self.tr('Number of Monte Carlo loops (repetitive trials) to run'),
             QgsProcessingParameterNumber.Integer,
             minValue=1, maxValue=50
@@ -148,7 +153,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Add a parameter for the number of years to simulate
         self.addParameter(QgsProcessingParameterNumber(
-            YEARS,
+            self.YEARS,
             self.tr('Number of years to simulate (accuracy likely to decline '\
                     'significantly with increases to this parameter)'),
             QgsProcessingParameterNumber.Integer,
@@ -157,7 +162,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Add a paramater for the percentage of boats that are decontaminated
         self.addParameter(QgsProcessingParameterNumber(
-            PCT_DECONT,
+            self.PCT_DECONT,
             self.tr('Percentage of all boats that are deconaminated'),
             QgsProcessingParameterNumber.Integer,
             defaultValue=0,
@@ -176,11 +181,11 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         from openrouteservice.convert import decode_polyline
         import pickle
         import csv
+        from datetime import date
 
         # Define data-storage classes for Sites and Counties
-        # These MUST support the same attributes as the classes defined in
-        # RetrieveRoutes.py, and should be copied and pasted for best results
 
+        #TODO: Add `assert`ions for @*.setter definitions (infested->bool, etc)
         class Site():
             '''
             Site object; contains information for monitoring locations.
@@ -199,9 +204,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 self._calciumDate =    calciumDate
                 self._percentClean =   percentClean
                 self._habitability =   habitability
-                self._attractiveness = attracteiveness
+                self._attractiveness = attractiveness
                 self._initInfested =   initInfested
-                self.resetInfested()
 
             @property
             def lat(self):
@@ -281,6 +285,11 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             def initInfested(self):
                 return self._initInfested
 
+            @initInfested.setter
+            def initInfested(self, newState):
+                self._initInfested = newState
+                self.resetInfested()
+
             @property
             def infested(self):
                 return self._infested
@@ -296,9 +305,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         class County():
             '''
             County object; contains information for counties.
-            County(self, lat, lon, boats) -> County object
+            County(self, lat, lon[, boats]) -> County object
             '''
-            def __init__(self, lat, lon, boats):
+            def __init__(self, lat, lon, boats=None):
                 self._lat =   lat
                 self._lon =   lon
                 self._boats = boats
@@ -320,66 +329,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 self._boats = new_boats
 
 
-        # Retrieve parameters:
-        feedback.setProgressText('Retrieving input parameters...')
-        # Lake input file
-        siteFileName = self.parameterAsFile(
-            parameters,
-            INPUT,
-            context
-        )
-        # County input file
-        countyFileName = self.parameterAsFile(
-            parameters,
-            COUNTIES,
-            context
-        )
-        # Pickled routes file
-        pickledFileName = self.parameterAsFile(
-            parameters,
-            ROUTES,
-            context
-        )
-
-        # Add field definitions:
-        fields = QgsFields()
-        fList = [QgsField('County', QVariant.String),
-                 QgsField('Lake', QVariant.String),
-                 QgsField('pH', QVariant.Float),
-                 QgsField('pH Date', QVariant.String),
-                 QgsField('Calcium', QVariant.Float),
-                 QgsField('Calcium Date', QVariant.String),
-                 QgsField('Habitability', QVariant.Float),
-                 QgsField('Attractiveness', QVariant.Int),
-                 QgsField('Infestation Proportion', QVariant.Float),
-                 QgsField('Initially Infested', QVariant.Bool)]
-        for field in fList:
-            fields.append(field)
-        # Sink and ID for the route output layer
-        (routeSink, routeSinkID) = self.parameterAsSink(
-            parameters,
-            ROUTE_OUTPUT,
-            context,
-            fields,
-            geometryType=QgsWkbTypes.LineString,
-            crs=QgsCoordinateReferenceSystem('EPSG:4326')
-        )
-
-        # Internalize pickled routes
-        feedback.setProgressText('Loading pickled routes...')
-        # A rather awkward process to allow items to be unpickled and assigned
-        # in order:
-        counties = None; sites = None; routeMatrix = None
-        l = [counties, sites, routeMatrix]
-        feedback.setProgressText('Retrieving pickled routes from file...')
-        with open(pickledFileName, 'r+b') as pickledFile:
-            for i in range(len(l)):
-                l[i] = pickle.load(f)
-        (counties, sites, routeMatrix) = tuple(l)
-        del l, i
-
         # Define habitability function
-        def habitability(pH, calcium, lowPh, lowCalc):
+        def habitability(pH, calcium, lowpH, lowCalc):
             """
             Returns the habitability of the site, based on pH and calcium levels.
             Result is a probability expressed as a decimal, or None if no data exists.
@@ -423,58 +374,133 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                     pHFactor = 1
                 return pHFactor * CaFactor
 
+
+        #TODO: Add cancellation checks (via `feedback`) for user-friendliness
+
+        # Retrieve parameters:
+        feedback.setProgressText('Retrieving input parameters...')
+        # Lake input file
+        siteFileName = self.parameterAsFile(
+            parameters,
+            self.INPUT,
+            context
+        )
+        # County input file
+        countyFileName = self.parameterAsFile(
+            parameters,
+            self.COUNTIES,
+            context
+        )
+        # Pickled routes file
+        pickledFileName = self.parameterAsFile(
+            parameters,
+            self.ROUTES,
+            context
+        )
+        # Number of Monte Carlo loops to run
+        MCLoops = self.parameterAsInt(
+            parameters,
+            self.MC_LOOPS,
+            context
+        )
+        # Number of years to simulate
+        years = self.parameterAsInt(
+            parameters,
+            self.YEARS,
+            context
+        )
+        # Percent of all boats assumed to be decontaminated
+        percentCleaned = self.parameterAsInt(
+            parameters,
+            self.PCT_DECONT,
+            context
+        )
+
+        # Internalize pickled routes
+        feedback.setProgressText('Retrieving pickled routes from file...')
+        # A rather awkward process to allow items to be unpickled and assigned
+        # in order:
+        countiesList = None; sitesList = None; routeMatrix = None
+        l = [countiesList, sitesList, routeMatrix]
+        with open(pickledFileName, 'r+b') as pickledFile:
+            for i in range(len(l)):
+                l[i] = pickle.load(pickledFile)
+        (countiesList, sitesList, routeMatrix) = tuple(l)
+        del l, i
+
+        # Convert (name, lat, lon) tuples for counties and sites into classes
+        counties = dict()
+        for item in countiesList:
+            counties[item[0]] = County(item[1], item[2])  # Add boats later
+        sites = dict()
+        for item in sitesList:
+            sites[item[0]] = Site(item[1], item[2])  # Add other data later
+        del countiesList, sitesList
+
         # Internalize additional site data from file (i.e. attractiveness)
         #TODO: Add list of new counties, sites to fetch routes for
-##        with open(countyFileName, 'r') as countyFile,
-##             open(siteFileName, 'r') as lakeFile:
-##            # Populate object lists from data files
-##            # County data
-##            dialect = csv.Sniffer().sniff(countyFile.read(1024)); countyFile.seek(0)
-##            countyReader = csv.reader(countyFile, dialect)
-##            # Get past, and validate, header line
-##            try:
-##                assert countyReader.__next__() == \
-##                       ['County','Latitude','Longitude','Boats','County Seat']
-##            except AssertionError:
-##                feedback.reportError(
-##                    'County file header does not match expected. Aborting.',
-##                    fatalError=True)
-##            for line in countyReader:
-##                if line[0] not in counties:
-##                    counties[line[0]] = County(float(line[1]), float(line[2]),
-##                                               int(line[3]))
-##            del countyReader
-##            # Site data
-##            dialect = csv.Sniffer().sniff(lakeFile.read(1024)); lakeFile.seek(0)
-##            lakeReader = csv.reader(lakeFile, dialect)
-##            # Get past, and validate, header line
-##            try:
-##                assert lakeReader.__next__() == \
-##                       ['IDNumber','Latitude','Longitude','Date','Parameter', \
-##                        'Value','Attractiveness','Infested']
-##            except AssertionError:
-##                feedback.reportError(
-##                    'Lake file header does not match expected. Aborting.',
-##                    fatalError=True)
-##            for line in lakeReader:
-##                try:
-##                    # Ensure site is in dataset
-##                    if line[0] not in sites:
+        with open(countyFileName, 'r') as countyFile, \
+             open(siteFileName, 'r') as lakeFile:
+            # Populate object lists from data files
+            # County data
+            dialect = csv.Sniffer().sniff(countyFile.read(1024)); countyFile.seek(0)
+            countyReader = csv.reader(countyFile, dialect)
+            # Get past, and validate, header line
+            try:
+                assert countyReader.__next__() == \
+                       ['County','Latitude','Longitude','Boats','County Seat']
+            except AssertionError:
+                feedback.reportError(
+                    'County file header does not match expected. Aborting.',
+                    fatalError=True)
+            # Actual internalization
+            for line in countyReader:
+                if line[0] not in counties:
+                    # Create new County from record
+                    counties[line[0]] = County(float(line[1]), float(line[2]),
+                                               int(line[3]))
+                    #TODO: Add line[0] to list of new counties
+                else:
+                    # Add boats to existing County
+                    counties[line[0]].boats = int(line[3])
+            del countyReader
+            # Site data
+            dialect = csv.Sniffer().sniff(lakeFile.read(1024)); lakeFile.seek(0)
+            lakeReader = csv.reader(lakeFile, dialect)
+            # Get past, and validate, header line
+            try:
+                assert lakeReader.__next__() == \
+                       ['IDNumber','Latitude','Longitude','Date','Parameter', \
+                        'Value','Attractiveness','Infested']
+            except AssertionError:
+                feedback.reportError(
+                    'Lake file header does not match expected. Aborting.',
+                    fatalError=True)
+            # Actual internalization
+            for line in lakeReader:
+                try:
+                    # Ensure Site is in dataset
+                    #TODO: This can only be done once ORS integrateion is added
+                    # Otherwise, sites will contain sites for which directions
+                    # cannot be found.
+                    if line[0] not in sites:
 ##                        sites[line[0]] = Site(float(line[1]), float(line[2]),
 ##                                              attractiveness=int(line[6]),
-##                                              initInfested=bool(line[7]))
-##                    # Add data to site (only if newer than current data)
-##                    if line[4] == 'pH':
-##                        sites[line[0]].addpH(float(line[5]),
-##                                             date.fromisoformat(line[3]))
-##                    elif line[4] == 'Calcium':
-##                        sites[line[0]].addCa(float(line[5]),
-##                                             date.fromisoformat(line[3]))
-##                except ValueError:
-##                    pass
-        for site in sites.values():
-            site.habitability = habitability(site.pH, site.calcium,
-                                             lowPh, lowCalc)
+##                                              initInfested=bool(int(line[7])))
+                        continue
+                        #TODO: Add line[0] to list of new sites
+                    # Add data to Site (only if newer than current data)
+                    if line[4] == 'pH':
+                        sites[line[0]].addpH(float(line[5]),
+                                             date.fromisoformat(line[3]))
+                    elif line[4] == 'Calcium':
+                        sites[line[0]].addCa(float(line[5]),
+                                             date.fromisoformat(line[3]))
+                    # Add attractiveness, initInfested states to Sites
+                    sites[line[0]].attractiveness = int(line[6])
+                    sites[line[0]].initInfested = bool(int(line[7]))
+                except ValueError:
+                    pass
 
         #TODO: Fetch routes for new counties, sites
 
@@ -488,6 +514,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Add route polylines to route layer
         feedback.setProgressText('Calculating route lengths...')
         for i in range(len(counties)):
+            #TODO: Good place to add cancellation check
             for j in range(len(sites)):
                 encoded = routeMatrix[i][j]
                 decoded = decode_polyline(encoded)
@@ -505,13 +532,18 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Model-specific variables:
         lowCalc = 28
-        lowPh = 7.4
+        lowpH = 7.4
         infestedBoatFraction = 127 / 39522  ## 2016 (used mussels + water)
         ## 2017: 17/77235 mussels + 390 standing water
         ## 2018: 16/109789 mussels + 447 standing water
         settleRisk = 0.02
         α = 2
         iterations_per_year = 8  # Assumed number of boat trips per year
+
+        # Calculate habitability values
+        for site in sites.values():
+            site.habitability \
+                = habitability(site.pH, site.calcium, lowpH, lowCalc)
 
         # Set up arrays
         # Computed in Model Core:
@@ -563,7 +595,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 P.fill(0.0)
                 Q.fill(0.0)
                 
-                for iteration in range(iterations_per_yr):
+                for iteration in range(self.iterationsPerYear):
                     
                     # Compute P[i]: potentially infested boats in county i
                     for i in range(len(counties)):
@@ -571,7 +603,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                             if site.infested:
                                 P[i] += T[i][j]
                         # Adjust for decontamination using percent_cleaned
-                        P[i] = P[i] * (1 - (percent_cleaned / 100))
+                        P[i] = P[i] * (1 - (percentCleaned / 100))
                     
                     # Compute t[i][j]: infested boats from county i to lake j
                     t.fill(0.0)
@@ -602,6 +634,30 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # End Model
         feedback.pushInfo('Completed Monte Carlo model')
 
+        # Add field definitions:
+        fields = QgsFields()
+        fList = [QgsField('County', QVariant.String),
+                 QgsField('Lake', QVariant.String),
+                 QgsField('pH', QVariant.Float),
+                 QgsField('pH Date', QVariant.String),
+                 QgsField('Calcium', QVariant.Float),
+                 QgsField('Calcium Date', QVariant.String),
+                 QgsField('Habitability', QVariant.Float),
+                 QgsField('Attractiveness', QVariant.Int),
+                 QgsField('Infestation Proportion', QVariant.Float),
+                 QgsField('Initially Infested', QVariant.Bool)]
+        for field in fList:
+            fields.append(field)
+        # Sink and ID for the route output layer
+        (routeSink, routeSinkID) = self.parameterAsSink(
+            parameters,
+            ROUTE_OUTPUT,
+            context,
+            fields,
+            geometryType=QgsWkbTypes.LineString,
+            crs=QgsCoordinateReferenceSystem('EPSG:4326')
+        )
+
         # Add route polylines to route layer
         feedback.setProgressText('Adding routes to route layer...')
         for i, (cName, county) in enumerate(counties.items):
@@ -614,7 +670,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.pHDate.isoformat(), site.calcium,
                                     site.calciumDate.isoformat(),
                                     site.habitability, site.attractiveness,
-                                    siteInfestedFraction, site.initInfested]) ##
+                                    sum(results[loop][years][j] for loop in
+                                        range(MCLoops)) / MCLoops,
+                                    #TODO: Find a way to output ^ for each year
+                                    site.initInfested])
                 feat.setGeometry(QgsGeometry.fromPolyline(
                     [QgsPoint(pt[0], pt[1]) for pt in decoded['coordinates']]
                 ))
