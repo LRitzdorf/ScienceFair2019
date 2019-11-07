@@ -638,20 +638,20 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         fields = QgsFields()
         fList = [QgsField('County', QVariant.String),
                  QgsField('Lake', QVariant.String),
-                 QgsField('pH', QVariant.Float),
+                 QgsField('pH', QVariant.Double),
                  QgsField('pH Date', QVariant.String),
-                 QgsField('Calcium', QVariant.Float),
+                 QgsField('Calcium', QVariant.Double),
                  QgsField('Calcium Date', QVariant.String),
-                 QgsField('Habitability', QVariant.Float),
+                 QgsField('Habitability', QVariant.Double),
                  QgsField('Attractiveness', QVariant.Int),
-                 QgsField('Infestation Proportion', QVariant.Float),
+                 QgsField('Infestation Proportion', QVariant.Double),
                  QgsField('Initially Infested', QVariant.Bool)]
         for field in fList:
             fields.append(field)
         # Sink and ID for the route output layer
         (routeSink, routeSinkID) = self.parameterAsSink(
             parameters,
-            ROUTE_OUTPUT,
+            self.ROUTE_OUTPUT,
             context,
             fields,
             geometryType=QgsWkbTypes.LineString,
@@ -660,19 +660,22 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Add route polylines to route layer
         feedback.setProgressText('Adding routes to route layer...')
-        for i, (cName, county) in enumerate(counties.items):
-            for j, (sName, site) in enumerate(sites.items):
+        for i, (cName, county) in enumerate(counties.items()):
+            for j, (sName, site) in enumerate(sites.items()):
                 encoded = routeMatrix[i][j]
                 decoded = decode_polyline(encoded)
                 feat = QgsFeature()
                 # Transfer attributes from each site to its feature
+                #TODO: Find a way to store this for each year (adding multiple
+                # fields could be difficult - add #YEARS fields initially?)
                 feat.setAttributes([cName, sName, site.pH,
-                                    site.pHDate.isoformat(), site.calcium,
-                                    site.calciumDate.isoformat(),
+                                    (site.pHDate.isoformat() if site.pH != None
+                                     else ''), site.calcium,
+                                    (site.calciumDate.isoformat() if
+                                     site.calcium != None else ''),
                                     site.habitability, site.attractiveness,
                                     sum(results[loop][years][j] for loop in
                                         range(MCLoops)) / MCLoops,
-                                    #TODO: Find a way to output ^ for each year
                                     site.initInfested])
                 feat.setGeometry(QgsGeometry.fromPolyline(
                     [QgsPoint(pt[0], pt[1]) for pt in decoded['coordinates']]
@@ -699,7 +702,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # ^ Preserve fields for each polyline, pass on to points (research)
         vertices = processing.run('native:extractvertices',
                                   {'INPUT': densified['OUTPUT'],
-                                   'OUTPUT': parameters[OUTPUT]},
+                                   'OUTPUT': parameters[self.OUTPUT]},
                                   context=context, feedback=feedback,
                                   is_child_algorithm=True)
         del densified
@@ -720,5 +723,5 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         feedback.pushInfo('Processing complete; finishing up...')
 
         # Return output layers
-        return {OUTPUT:       vertices['OUTPUT'],
-                ROUTE_OUTPUT: routeSinkID}
+        return {self.OUTPUT:       vertices['OUTPUT'],
+                self.ROUTE_OUTPUT: routeSinkID}
