@@ -89,15 +89,32 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         return self.tr(
             '''
             Create a heatmap of predicted boater travel in a real-world water \
-            system, based on a gravity model and route data.
+            system, based on a gravity model and geographic data.
 
-            All inputs are files. The first two should contain lake and county \
-            data, in that order. The third should be the .pkl file created by \
-            the RetrieveRoutes.py script.
+            Of the three file inputs, the first two should contain lake and \
+            county data, in that order. The third should be the .pkl file \
+            created by the RetrieveRoutes.py script.
 
-            The output will be a point layer with heatmap styling, showing \
-            routes over which contaminated boats are deemed likely to travel. \
-            Higher-traffic routes will be given a higher weight.
+            The numerical parameters can be adjusted within the limits \
+            provided to tune the model's behavior.
+
+            The Monte Carlo loop value determines how many times the entire \
+            gravity model will be looped over. Results from this repetition \
+            will be averaged and output. Note that this method helps to reduce \
+            the effects of randomly choosing whether each individual \
+            contaminated boat causes a lake to become infested, while \
+            retaining the potential to for unlikely but possible infestation \
+            scenarios to occur.
+
+            The first output will be a point layer with heatmap styling, \
+            showing routes over which contaminated boats are found to be \
+            likely to travel. Thus, hotspots correspond to sections of road \
+            where a check station could intercept a large number of \
+            contaminated boats.
+
+            The second output will be a polyline layer, containing individual \
+            routes as features, with parameters corresponding to attributes of \
+            the lakes to which they lead.
             '''
         )
 
@@ -512,7 +529,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         c = zeros([len(counties),len(sites)],dtype=float)
 
         # Add route polylines to route layer
-        feedback.setProgressText('Calculating route lengths...')
+        feedback.setProgressText('Calculating route lengths... '\
+                                 '(This could take a while)')
         for i in range(len(counties)):
             #TODO: Good place to add cancellation check
             for j in range(len(sites)):
@@ -659,22 +677,28 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         )
 
         # Add route polylines to route layer
-        feedback.setProgressText('Adding routes to route layer...')
+        feedback.setProgressText('Adding routes to route layer... '\
+                                 '(This could take a while)')
         for i, (cName, county) in enumerate(counties.items()):
             for j, (sName, site) in enumerate(sites.items()):
+                #TODO: To reduce time taken for this step, give a feature the
+                # correct geometry and store it in routeMatrix when getting
+                # lengths near start, then access here with
+                # feat = routeMatrix[i][j]. Remove time warning above?
                 encoded = routeMatrix[i][j]
                 decoded = decode_polyline(encoded)
                 feat = QgsFeature()
                 # Transfer attributes from each site to its feature
                 #TODO: Find a way to store this for each year (adding multiple
-                # fields could be difficult - add #YEARS fields initially?)
+                # fields could be difficult - add YEARS number of fields
+                # initially?) Note: Be sure to change [years - 1] index for this
                 feat.setAttributes([cName, sName, site.pH,
                                     (site.pHDate.isoformat() if site.pH != None
                                      else ''), site.calcium,
                                     (site.calciumDate.isoformat() if
                                      site.calcium != None else ''),
                                     site.habitability, site.attractiveness,
-                                    sum(results[loop][years][j] for loop in
+                                    sum(results[loop][years - 1][j] for loop in
                                         range(MCLoops)) / MCLoops,
                                     site.initInfested])
                 feat.setGeometry(QgsGeometry.fromPolyline(
@@ -682,7 +706,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 ))
                 routeSink.addFeature(feat)
         del encoded, decoded, cName, sName
-        routeSink.FlushBuffer()
+        routeSink.flushBuffer()
         # All routes are now in routeSink as polyline features
 
         # Cleanup
