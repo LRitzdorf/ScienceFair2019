@@ -541,6 +541,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 feat.setGeometry(QgsGeometry.fromPolyline(
                     [QgsPoint(pt[0], pt[1]) for pt in decoded['coordinates']]
                 ))
+                # Store feature for later retrieval (to avoid taking a really
+                # long time regenerating feature geometry when creating output)
+                routeMatrix[i][j] = feat
                 # Add distance to array c[i][j]
                 c[i][j] = feat.geometry().length() * 10  # Gives length in km
         del encoded, decoded
@@ -682,13 +685,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                  '(This could take a while)')
         for i, (cName, county) in enumerate(counties.items()):
             for j, (sName, site) in enumerate(sites.items()):
-                #TODO: To reduce time taken for this step, give a feature the
-                # correct geometry and store it in routeMatrix when getting
-                # lengths near start, then access here with
-                # feat = routeMatrix[i][j]. Remove time warning above?
-                encoded = routeMatrix[i][j]
-                decoded = decode_polyline(encoded)
-                feat = QgsFeature()
+                #TODO: Remove time warning above?
+                #TODO: Also a really good place to check for cancellation
+                feat = routeMatrix[i][j]
                 # Transfer attributes from each site to its feature
                 #TODO: Find a way to store this for each year (adding multiple
                 # fields could be difficult - add YEARS number of fields
@@ -702,9 +701,6 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     sum(results[loop][years - 1][j] for loop in
                                         range(MCLoops)) / MCLoops,
                                     site.initInfested])
-                feat.setGeometry(QgsGeometry.fromPolyline(
-                    [QgsPoint(pt[0], pt[1]) for pt in decoded['coordinates']]
-                ))
                 routeSink.addFeature(feat)
         del encoded, decoded, cName, sName
         routeSink.flushBuffer()
