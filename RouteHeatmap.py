@@ -29,7 +29,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     MC_LOOPS =     'MC_LOOPS'      # Number of Monte Carlo loops to run
     YEARS =        'YEARS'         # Number of years to simulate
     PCT_DECONT =   'PCT_DECONT'    # Percent of all boats decontaminated
-    OUTPUT =       'OUTPUT'        # Heatmap layer
+##    OUTPUT =       'OUTPUT'        # Heatmap layer
     ROUTE_OUTPUT = 'ROUTE_OUTPUT'  # Route layer (not as a heatmap)
 
     iterationsPerYear = 8  # Number of trips boats are assumed to make per year
@@ -105,12 +105,13 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             contaminated boat causes a lake to become infested, while \
             retaining the potential to for unlikely but possible infestation \
             scenarios to occur.
-
-            The first output will be a point layer with heatmap styling, \
-            showing routes over which contaminated boats are found to be \
-            likely to travel. Thus, hotspots correspond to sections of road \
-            where a check station could intercept a large number of \
-            contaminated boats.
+            '''
+##            The first output will be a point layer with heatmap styling, \
+##            showing routes over which contaminated boats are found to be \
+##            likely to travel. Thus, hotspots correspond to sections of road \
+##            where a check station could intercept a large number of \
+##            contaminated boats.
+            + '''
 
             The second output will be a polyline layer, containing individual \
             routes as features, with parameters corresponding to attributes of \
@@ -146,13 +147,13 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             extension='pkl'
         ))
 
-        # Add a new vector layer for the output heatmap
-        self.addParameter(QgsProcessingParameterVectorDestination(
-            self.OUTPUT,
-            self.tr('Output Heatmap Layer'),
-            QgsProcessing.TypeVectorPoint
-        ))
-
+##        # Add a new vector layer for the output heatmap
+##        self.addParameter(QgsProcessingParameterVectorDestination(
+##            self.OUTPUT,
+##            self.tr('Output Heatmap Layer'),
+##            QgsProcessing.TypeVectorPoint
+##        ))
+##
         # Add a new feature sink (vector layer) for the route, not as a heatmap
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.ROUTE_OUTPUT,
@@ -712,40 +713,41 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Cleanup
         del i, j, site, county
 
-        # Heatmap processing (based on results of Monte Carlo model)
-        feedback.setProgressText('Building heatmap from model results...')
-        # Densify routes layer
-        densified = processing.run('qgis:densifygeometriesgivenaninterval',
-                                   {'INPUT': routeSinkID,
-                                    'INTERVAL': 0.001,
-                                    'OUTPUT': 'memory:'},
-                                   context=context, feedback=feedback,
-                                   is_child_algorithm=True)
-
-        # Extract vertices
-        # ^ Preserve fields for each polyline, pass on to points (research)
-        vertices = processing.run('native:extractvertices',
-                                  {'INPUT': densified['OUTPUT'],
-                                   'OUTPUT': parameters[self.OUTPUT]},
-                                  context=context, feedback=feedback,
-                                  is_child_algorithm=True)
-        del densified
-
-        # Set up heatmap renderer
-        # ^ Set weight for each point from field(s) (research)
-        rndrr = QgsHeatmapRenderer()
-        rndrr.setColorRamp(QgsGradientColorRamp(
-            QColor('transparent'),QColor(227,26,28)))
-        rndrr.setRadiusUnit(1)
-        rndrr.setRadius(500)
-
-        # Assign heatmap renderer to extracted vertices layer
-        QgsProcessingUtils.mapLayerFromString(vertices['OUTPUT'], context
-            ).setRenderer(rndrr)
+##        # Heatmap processing (based on results of Monte Carlo model)
+##        feedback.setProgressText('Building heatmap from model results...')
+##        # Densify routes layer
+##        densified = processing.run('qgis:densifygeometriesgivenaninterval',
+##                                   {'INPUT': routeSinkID,
+##                                    'INTERVAL': 0.001,
+##                                    'OUTPUT': 'memory:'},
+##                                   context=context, feedback=feedback,
+##                                   is_child_algorithm=True)
+##
+##        # Extract vertices
+##        # ^ Preserve fields for each polyline, pass on to points (research)
+##        vertices = processing.run('native:extractvertices',
+##                                  {'INPUT': densified['OUTPUT'],
+##                                   'OUTPUT': parameters[self.OUTPUT]},
+##                                  context=context, feedback=feedback,
+##                                  is_child_algorithm=True)
+##        del densified
+##
+##        # Set up heatmap renderer
+##        # ^ Set weight for each point from field(s) (research)
+##        rndrr = QgsHeatmapRenderer()
+##        rndrr.setColorRamp(QgsGradientColorRamp(
+##            QColor('transparent'),QColor(227,26,28)))
+##        rndrr.setRadiusUnit(1)
+##        rndrr.setRadius(500)
+##
+##        # Assign heatmap renderer to extracted vertices layer
+##        QgsProcessingUtils.mapLayerFromString(vertices['OUTPUT'], context
+##            ).setRenderer(rndrr)
 
         # End Processing
         feedback.pushInfo('Processing complete; finishing up...')
 
         # Return output layers
-        return {self.OUTPUT:       vertices['OUTPUT'],
-                self.ROUTE_OUTPUT: routeSinkID}
+        return {self.ROUTE_OUTPUT: routeSinkID}
+##        return {self.OUTPUT:       vertices['OUTPUT'],
+##                self.ROUTE_OUTPUT: routeSinkID}
