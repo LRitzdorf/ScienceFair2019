@@ -549,6 +549,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         del encoded, decoded
         # Route distances are now stored in c[i][j]
 
+        #TODO: Pickle routeMatrix in QGIS temp folder to reduce processing time
+        # for future alg runs
+
         # Begin Model
         feedback.setProgressText('Starting Monte Carlo model')
 
@@ -579,7 +582,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         W = zeros(len(sites),dtype=int)
         # c has already been set up and populated with distances
         # Results:
-        results = zeros([MCLoops,years,len(sites)],dtype=int)
+        results = zeros([MCLoops,years,len(sites)],dtype=bool)
 
         # Set up O[i] and W[i]
         for i, county in enumerate(counties.values()):
@@ -683,26 +686,27 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Add route polylines to route layer
         feedback.setProgressText('Adding routes to route layer... '\
                                  '(This could take a while)')
+        # Create list of infestation proportions to use here
+        avgInfest = list()
+        #TODO: Find a way to store this for each year (adding multiple attribute
+        # fields could be difficult - add YEARS number of fields initially?)
+        # Note: Be sure to change [years - 1] index for this
+        for j in range(len(results[0][0])):
+            avgInfest.append(sum(results[loop][years - 1][j] for loop in range(MCLoops)) / MCLoops)
         for i, (cName, county) in enumerate(counties.items()):
             for j, (sName, site) in enumerate(sites.items()):
-                #TODO: Remove time warning above?
                 #TODO: Also a really good place to check for cancellation
                 feat = routeMatrix[i][j]
                 # Transfer attributes from each site to its feature
-                #TODO: Find a way to store this for each year (adding multiple
-                # fields could be difficult - add YEARS number of fields
-                # initially?) Note: Be sure to change [years - 1] index for this
                 feat.setAttributes([cName, sName, site.pH,
-                                    (site.pHDate.isoformat() if site.pH != None
-                                     else ''), site.calcium,
-                                    (site.calciumDate.isoformat() if
-                                     site.calcium != None else ''),
+                                    (site.pHDate.isoformat() if site.pH \
+                                     != None else None), site.calcium,
+                                    (site.calciumDate.isoformat() if \
+                                     site.calcium != None else None),
                                     site.habitability, site.attractiveness,
-                                    sum(results[loop][years - 1][j] for loop in
-                                        range(MCLoops)) / MCLoops,
-                                    site.initInfested])
+                                    avgInfest[j], site.initInfested])
                 routeSink.addFeature(feat)
-        del encoded, decoded, cName, sName
+        del cName, sName, avgInfest
         routeSink.flushBuffer()
         # All routes are now in routeSink as polyline features
 
@@ -712,6 +716,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 ##        # Heatmap processing (based on results of Monte Carlo model)
 ##        feedback.setProgressText('Building heatmap from model results...')
 ##        # Densify routes layer
+##        #TODO: Look at saving to the QGIS temp folder to reduce RAM usage
 ##        densified = processing.run('qgis:densifygeometriesgivenaninterval',
 ##                                   {'INPUT': routeSinkID,
 ##                                    'INTERVAL': 0.001,
