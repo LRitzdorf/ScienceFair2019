@@ -533,7 +533,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         feedback.setProgressText('Calculating route lengths... '\
                                  '(This could take a while)')
         for i in range(len(counties)):
-            #TODO: Good place to add cancellation check
+            # Cancellation check
+            if feedback.isCanceled():
+                return {None: None}
             for j in range(len(sites)):
                 encoded = routeMatrix[i][j]
                 decoded = decode_polyline(encoded)
@@ -608,6 +610,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         feedback.setProgressText('Running model...')
 
         for MCLoop in range(MCLoops):
+
             feedback.pushInfo(f'Monte Carlo loop {MCLoop}')
 
             # Reset infestation states
@@ -620,6 +623,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 P.fill(0.0)
                 Q.fill(0.0)
                 
+                # Cancellation check
+                if feedback.isCanceled():
+                    return {None: None}
+
                 for iteration in range(self.iterationsPerYear):
                     
                     # Compute P[i]: potentially infested boats in county i
@@ -695,7 +702,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             avgInfest.append(sum(results[loop][years - 1][j] for loop in range(MCLoops)) / MCLoops)
         for i, (cName, county) in enumerate(counties.items()):
             for j, (sName, site) in enumerate(sites.items()):
-                #TODO: Also a really good place to check for cancellation
+                # Cancellation check
+                if feedback.isCanceled():
+                    return {None: None}
                 feat = routeMatrix[i][j]
                 # Transfer attributes from each site to its feature
                 feat.setAttributes([cName, sName, site.pH,
@@ -723,6 +732,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 ##                                    'OUTPUT': 'memory:'},
 ##                                   context=context, feedback=feedback,
 ##                                   is_child_algorithm=True)
+##        # Cancellation check
+##        if feedback.isCanceled():
+##            return {None: None}
 ##
 ##        # Extract vertices
 ##        # ^ Preserve fields for each polyline, pass on to points (research)
@@ -731,6 +743,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 ##                                   'OUTPUT': parameters[self.OUTPUT]},
 ##                                  context=context, feedback=feedback,
 ##                                  is_child_algorithm=True)
+##        # Cancellation check
+##        if feedback.isCanceled():
+##            return {None: None}
 ##        del densified
 ##
 ##        # Set up heatmap renderer
