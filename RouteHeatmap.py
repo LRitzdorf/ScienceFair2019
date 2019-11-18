@@ -393,8 +393,6 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 return pHFactor * CaFactor
 
 
-        #TODO: Add cancellation checks (via `feedback`) for user-friendliness
-
         # Retrieve parameters:
         feedback.setProgressText('Retrieving input parameters...')
         # Lake input file
@@ -536,6 +534,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             # Cancellation check
             if feedback.isCanceled():
                 return {None: None}
+            # Progress update
+            feedback.setProgress(int(100 * i / len(counties)))
+
             for j in range(len(sites)):
                 encoded = routeMatrix[i][j]
                 decoded = decode_polyline(encoded)
@@ -556,6 +557,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Begin Model
         feedback.setProgressText('Starting Monte Carlo model')
+        feedback.setProgress(0)
 
         # Model-specific variables:
         lowCalc = 28
@@ -626,6 +628,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 # Cancellation check
                 if feedback.isCanceled():
                     return {None: None}
+                # Progress update
+                feedback.setProgress(int(100 * \
+                    ((MCLoop * years) + year + 1) / (MCLoops * years)))
 
                 for iteration in range(self.iterationsPerYear):
                     
@@ -700,7 +705,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Note: Be sure to change [years - 1] index for this
         for j in range(len(results[0][0])):
             avgInfest.append(sum(results[loop][years - 1][j] for loop in range(MCLoops)) / MCLoops)
+
         for i, (cName, county) in enumerate(counties.items()):
+            # Progress update
+            feedback.setProgress(int(100 * i / len(counties)))
             for j, (sName, site) in enumerate(sites.items()):
                 # Cancellation check
                 if feedback.isCanceled():
