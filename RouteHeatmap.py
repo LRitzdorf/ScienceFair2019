@@ -685,6 +685,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                  QgsField('Initially Infested', QVariant.Bool)]
         for field in fList:
             fields.append(field)
+        del fList
         # Sink and ID for the route output layer
         (routeSink, routeSinkID) = self.parameterAsSink(
             parameters,
@@ -704,7 +705,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # fields could be difficult - add YEARS number of fields initially?)
         # Note: Be sure to change [years - 1] index for this
         for j in range(len(results[0][0])):
-            avgInfest.append(sum(results[loop][years - 1][j] for loop in range(MCLoops)) / MCLoops)
+            avgInfest.append(float(sum(results[loop][years - 1][j] \
+                                 for loop in range(MCLoops)) / MCLoops))
 
         for i, (cName, county) in enumerate(counties.items()):
             # Progress update
@@ -714,14 +716,20 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 if feedback.isCanceled():
                     return {None: None}
                 feat = routeMatrix[i][j]
+                feat.setFields(fields, initAttributes=True)
                 # Transfer attributes from each site to its feature
-                feat.setAttributes([cName, sName, site.pH,
+                feat.setAttributes([cName,
+                                    sName,
+                                    site.pH,
                                     (site.pHDate.isoformat() if site.pH \
-                                     != None else None), site.calcium,
+                                     != None else None),
+                                    site.calcium,
                                     (site.calciumDate.isoformat() if \
                                      site.calcium != None else None),
-                                    site.habitability, site.attractiveness,
-                                    avgInfest[j], site.initInfested])
+                                    site.habitability,
+                                    site.attractiveness,
+                                    avgInfest[j],
+                                    site.initInfested])
                 routeSink.addFeature(feat)
         del cName, sName, avgInfest
         routeSink.flushBuffer()
