@@ -111,9 +111,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 ##            likely to travel. Thus, hotspots correspond to sections of road \
 ##            where a check station could intercept a large number of \
 ##            contaminated boats.
+##        Below: "The second output..."
             + '''
 
-            The second output will be a polyline layer, containing individual \
+            The output will be a polyline layer, containing individual \
             routes as features, with parameters corresponding to attributes of \
             the lakes to which they lead.
             '''
@@ -438,7 +439,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # in order:
         countiesList = None; sitesList = None; routeMatrix = None
         l = [countiesList, sitesList, routeMatrix]
-        with open(pickledFileName, 'r+b') as pickledFile:
+        with open(pickledFileName, 'rb') as pickledFile:
             for i in range(len(l)):
                 l[i] = pickle.load(pickledFile)
         (countiesList, sitesList, routeMatrix) = tuple(l)
@@ -718,6 +719,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 feat = routeMatrix[i][j]
                 feat.setFields(fields, initAttributes=True)
                 # Transfer attributes from each site to its feature
+                #TODO: Include number of contaminated boats traveling on route
                 feat.setAttributes([cName,
                                     sName,
                                     site.pH,
