@@ -9,7 +9,7 @@
 # representing the encoded polyline as its only argument. This would be done in
 # the program utilizing the stored data.
 
-version = 'v0.2'
+version = 'v0.2_borderStations'
 
 
 # Import required libraries
@@ -22,7 +22,7 @@ from datetime import date
 from time import time, sleep
 import pickle
 
-# Define Site and County classes
+# Define Site and BorderPoint classes
 class Site():
     '''
     Site object; contains information for monitoring locations.
@@ -92,10 +92,10 @@ class Site():
         return False
 
 
-class County():
+class BorderPoint():
     '''
-    County object; contains information for counties.
-    County(self, lat, lon, boats) -> County object
+    BorderPoint object; contains information for borders.
+    BorderPoint(self, lat, lon, boats) -> BorderPoint object
     '''
     def __init__(self, lat, lon, boats):
         self._lat =   lat
@@ -122,15 +122,15 @@ class County():
 print(f'OpenRouteService Route Retrieval Program {version}\n')
 
 
-# Request county, lake, and output files
+# Request border, lake, and output files
 tk.Tk().withdraw()
 print('Select the LAKE file in the "Open" window...')
 lakePath = askopenfilename()
 if lakePath == '':
     print('No file selected; cancelling...'); exit()
-print('Select the COUNTY file in the "Open" window...')
-countyPath = askopenfilename()
-if countyPath == '':
+print('Select the BORDER file in the "Open" window...')
+borderPath = askopenfilename()
+if borderPath == '':
     print('No file selected; cancelling...'); exit()
 print('Type the name of the new OUTPUT file in the window...')
 outputPath = asksaveasfilename(defaultextension='.pickle', filetypes=(
@@ -140,34 +140,34 @@ if outputPath == '':
 
 # (Try to) Open input files
 try:
-    with open(countyPath, 'r') as countyFile, open(lakePath, 'r') as lakeFile:
-        # Internalize county and lake data, ensuring that the most up-to-date
+    with open(borderPath, 'r') as borderFile, open(lakePath, 'r') as lakeFile:
+        # Internalize border and lake data, ensuring that the most up-to-date
         # records are used for each lake
 
         # Create dicts containing names and objects, in the same order that
-        # they appear in the data matrix (counties on the vertical axis, sites
+        # they appear in the data matrix (borders on the vertical axis, sites
         # on the horizontal)
         sites = {}
-        counties = {}
+        borders = {}
 
         # Populate object lists from data files
-        # County data
-        dialect = csv.Sniffer().sniff(countyFile.read(1024)); countyFile.seek(0)
-        countyReader = csv.reader(countyFile, dialect)
+        # BorderPoint data
+        dialect = csv.Sniffer().sniff(borderFile.read(1024)); borderFile.seek(0)
+        borderReader = csv.reader(borderFile, dialect)
         # Get past, and validate, header line
         try:
-            assert countyReader.__next__() \
-                   == ['County','Latitude','Longitude','Boats','County Seat']
+            assert borderReader.__next__() \
+                   == ['Name','Latitude','Longitude','Boats']
         except AssertionError:
-            print('County file header does not match expected. Please ensure '\
-                  'that you chose the correct file as input, and try again. '\
-                  'Error trace:')
+            print('Border point file header does not match expected. Please '\
+                  'ensure that you chose the correct file as input, and try '\
+                  'again. Error trace:')
             raise
-        for line in countyReader:
-            if line[0] not in counties:
-                counties[line[0]] = County(float(line[1]), float(line[2]),
+        for line in borderReader:
+            if line[0] not in borders:
+                borders[line[0]] = BorderPoint(float(line[1]), float(line[2]),
                                            int(line[3]))
-        del countyReader
+        del borderReader
         # Site data
         dialect = csv.Sniffer().sniff(lakeFile.read(1024)); lakeFile.seek(0)
         lakeReader = csv.reader(lakeFile, dialect)
@@ -193,7 +193,7 @@ try:
                 pass
 
         # Create a data matrix to hold encoded polyline strings
-        routeMatrix = full((len(counties),len(sites)), '', dtype=object)
+        routeMatrix = full((len(borders),len(sites)), '', dtype=object)
 except FileNotFoundError as e:
     print(f'\nCould not find "{e.filename}". Please check for typing errors '\
           'and try again.\nFull error trace:')
@@ -203,7 +203,7 @@ except FileNotFoundError as e:
 # Query user's ORS API key and ratelimit
 print('\nBe aware that all ORS API requests will be charged against your '\
       'Directions V2 quota in OpenRouteService. The total number of requests '\
-      'made will be less than or equal to the number of input counties '\
+      'made will be less than or equal to the number of input borders '\
       'multiplied by the number of input water bodies.\n')
 key = input('Type (or paste) your API key here:\n')
 while True:
@@ -219,10 +219,10 @@ while True:
 
 # Actual data retrieval
 count = 0
-badCounties, badSites = set(), set()
+badBorders, badSites = set(), set()
 start_time = time()
 client = openrouteservice.Client(key=key, retry_over_query_limit=True)
-for ci, county in enumerate(counties):
+for bi, border in enumerate(borders):
     for si, site in enumerate(sites):
         if si in badSites:
             # Leave routeMatrix[ci][si] unaltered (empty)
@@ -239,7 +239,7 @@ for ci, county in enumerate(counties):
             pass
         # Get directions for the route and write to output file
         try:
-            start = (counties[county].lon, counties[county].lat)
+            start = (borders[border].lon, borders[border].lat)
             end = (sites[site].lon, sites[site].lat)
             routes = client.directions((start, end))
             count += 1
@@ -282,32 +282,32 @@ for ci, county in enumerate(counties):
             raise RuntimeError('An HTTPS error occurred. You may be offline. '\
                                'Please check your connection and try again.')
         # Query successful, encoded polyline string stored in "encoded"
-        routeMatrix[ci][si] = encoded
-    # Can get here from the break when a bad county is detected, or when done
-    # with all sites for the current county. Either way, continue to the next
-    # county.
+        routeMatrix[bi][si] = encoded
+    # Can get here from the break when a bad border is detected, or when done
+    # with all sites for the current border. Either way, continue to the next
+    # border.
 
 # Done with data acquisition; report number of queries made to user
 print(f'Made a total of {count} ORS Directions queries.')
 
-# Remove problematic locations (counties or sites) from dicts and matrix
-cKeys = list(counties.keys())
+# Remove problematic locations (borders or sites) from dicts and matrix
+cKeys = list(borders.keys())
 for i, k in enumerate(cKeys):
-    if i in badCounties:
-        del counties[k]
+    if i in badBorders:
+        del borders[k]
 del cKeys
 sKeys = list(sites.keys())
 for i, k in enumerate(sKeys):
     if i in badSites:
         del sites[k]
 del sKeys
-routeMatrix = delete(routeMatrix, list(badCounties), 0)
+routeMatrix = delete(routeMatrix, list(badBorders), 0)
 routeMatrix = delete(routeMatrix, list(badSites), 1)
 
 # Export data to file by pickling
 with open(outputPath, 'wb') as outputFile:
     try:
-        for obj in (counties, sites, routeMatrix):
+        for obj in (borders, sites, routeMatrix):
             pickle.dump(obj, outputFile)
             # These need to be retrieved in order, via subsequent
             # pickle.load() calls.
