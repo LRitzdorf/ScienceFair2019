@@ -433,17 +433,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             context
         )
 
-        # Internalize pickled routes
+        # Internalize pickled counties, sites, and routes
         feedback.setProgressText('Retrieving pickled routes from file...')
-        # A rather awkward process to allow items to be unpickled and assigned
-        # in order:
-        countiesList = None; sitesList = None; routeMatrix = None
-        l = [countiesList, sitesList, routeMatrix]
         with open(pickledFileName, 'rb') as pickledFile:
-            for i in range(len(l)):
-                l[i] = pickle.load(pickledFile)
-        (countiesList, sitesList, routeMatrix) = tuple(l)
-        del l, i
+                (countiesList, sitesList, routeMatrix) = pickle.load(pickledFile)
 
         # Convert (name, lat, lon) tuples for counties and sites into classes
         counties = dict()

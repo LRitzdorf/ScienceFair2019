@@ -309,10 +309,8 @@ del i
 # Export data to file by pickling
 with open(outputPath, 'wb') as outputFile:
     try:
-        for obj in (bordersList, sitesList, routeMatrix):
-            pickle.dump(obj, outputFile)
-            # These need to be retrieved in order, via subsequent
-            # pickle.load() calls.
+        pickle.dump((bordersList, sitesList, routeMatrix), outputFile)
+        # These need to be retrieved as a tuple, via one pickle.load() call
     # Address the possibility of a file error (name changed, etc.)
     except IOError:
         print('An error occurred while writing data to the output '\
