@@ -204,7 +204,8 @@ except FileNotFoundError as e:
 print('\nBe aware that all ORS API requests will be charged against your '\
       'Directions V2 quota in OpenRouteService. The total number of requests '\
       'made will be less than or equal to the number of input borders '\
-      'multiplied by the number of input water bodies.\n')
+      'multiplied by the number of input water bodies '\
+      f'({len(borders) * len(sites)}).\n')
 key = input('Type (or paste) your API key here:\n')
 while True:
     try:
@@ -241,8 +242,8 @@ for bi, border in enumerate(borders):
         try:
             start = (borders[border].lon, borders[border].lat)
             end = (sites[site].lon, sites[site].lat)
-            routes = client.directions((start, end))
             count += 1
+            routes = client.directions((start, end))
             encoded = routes['routes'][0]['geometry']
         # Address several possible errors returned by the API
         except openrouteservice.exceptions.ApiError as e:
@@ -291,23 +292,24 @@ for bi, border in enumerate(borders):
 print(f'Made a total of {count} ORS Directions queries.')
 
 # Remove problematic locations (borders or sites) from dicts and matrix
-cKeys = list(borders.keys())
-for i, k in enumerate(cKeys):
+for i, k in enumerate(borders.keys()):
     if i in badBorders:
         del borders[k]
-del cKeys
-sKeys = list(sites.keys())
-for i, k in enumerate(sKeys):
+for i, k in enumerate(sites.keys()):
     if i in badSites:
         del sites[k]
-del sKeys
 routeMatrix = delete(routeMatrix, list(badBorders), 0)
 routeMatrix = delete(routeMatrix, list(badSites), 1)
+
+# Convert object lists into an easier-to-retrieve format
+bordersList = [(i[0], i[1].lat, i[1].lon) for i in borders.items()]
+sitesList =   [(i[0], i[1].lat, i[1].lon) for i in sites.items()]
+del i
 
 # Export data to file by pickling
 with open(outputPath, 'wb') as outputFile:
     try:
-        for obj in (borders, sites, routeMatrix):
+        for obj in (bordersList, sitesList, routeMatrix):
             pickle.dump(obj, outputFile)
             # These need to be retrieved in order, via subsequent
             # pickle.load() calls.
