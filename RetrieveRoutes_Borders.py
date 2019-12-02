@@ -104,12 +104,10 @@ class BorderPoint():
     BorderPoint object; contains information for borders.
     BorderPoint(self, lat, lon[, route, states]) -> BorderPoint object
     '''
-    def __init__(self, lat, lon, route='', states=[]):
+    def __init__(self, lat, lon):
         self._lat =    lat
         self._lon =    lon
-        self._route =  route
         self._states = set()
-        for state in states: self.addState(state)
 
     @property
     def lat(self):
@@ -118,14 +116,6 @@ class BorderPoint():
     @property
     def lon(self):
         return self._lon
-
-    @property
-    def route(self):
-        return self._route
-
-    @route.setter
-    def route(self, newRoute):
-        self._route = newRoute
 
     @property
     def states(self):
