@@ -22,20 +22,26 @@ from datetime import date
 from time import time, sleep
 import pickle
 
+
 # Define Site and BorderPoint classes
+
 class Site():
     '''
     Site object; contains information for monitoring locations.
-    Site(self, lat, lon[, pH, pHDate, calcium, calciumDate]) -> Site object
+    Site(self, lat, lon[, pH, pHDate, calcium, calciumDate,
+    percentClean, habitability, attractiveness, initInfested])
+    -> Site object
     '''
     def __init__(self, lat, lon, pH=None, pHDate=None, calcium=None,
-                 calciumDate=None):
-        self._lat =         lat
-        self._lon =         lon
-        self._pH =          pH
-        self._pHDate =      pHDate
-        self._calcium =     calcium
-        self._calciumDate = calciumDate
+                 calciumDate=None, attractiveness=1, initInfested=False):
+        self._lat =            lat
+        self._lon =            lon
+        self._pH =             pH
+        self._pHDate =         pHDate
+        self._calcium =        calcium
+        self._calciumDate =    calciumDate
+        self._attractiveness = attractiveness
+        self._initInfested =   initInfested
 
     @property
     def lat(self):
@@ -49,17 +55,9 @@ class Site():
     def pH(self):
         return self._pH
 
-    @pH.setter
-    def pH(self, newpH):
-        self._pH = newpH
-
     @property
     def pHDate(self):
         return self._pHDate
-
-    @pHDate.setter
-    def pHDate(self, newDate):
-        self._pHDate = newDate
 
     def addpH(self, newpH, newDate):
         if (self._pHDate == None) or (newDate > self._pHDate):
@@ -72,17 +70,9 @@ class Site():
     def calcium(self):
         return self._calcium
 
-    @calcium.setter
-    def calcium(self, newCa):
-        self._calcium = newCa
-
     @property
     def calciumDate(self):
         return self._calciumDate
-
-    @calciumDate.setter
-    def calciumDate(self, newDate):
-        self._calciumDate = newDate
 
     def addCa(self, newCa, newDate):
         if (self._calciumDate == None) or (newDate > self._calciumDate):
@@ -91,16 +81,35 @@ class Site():
             return True
         return False
 
+    @property
+    def attractiveness(self):
+        return self._attractiveness
+
+    @attractiveness.setter
+    def attractiveness(self, new_attr):
+        self._attractiveness = new_attr
+
+    @property
+    def initInfested(self):
+        return self._initInfested
+
+    @initInfested.setter
+    def initInfested(self, newState):
+        self._initInfested = newState
+        self.resetInfested()
+
 
 class BorderPoint():
     '''
     BorderPoint object; contains information for borders.
-    BorderPoint(self, lat, lon, boats) -> BorderPoint object
+    BorderPoint(self, lat, lon[, route, states]) -> BorderPoint object
     '''
-    def __init__(self, lat, lon, boats):
-        self._lat =   lat
-        self._lon =   lon
-        self._boats = boats
+    def __init__(self, lat, lon, route='', states=[]):
+        self._lat =    lat
+        self._lon =    lon
+        self._route =  route
+        self._states = set()
+        for state in states: self.addState(state)
 
     @property
     def lat(self):
@@ -111,12 +120,19 @@ class BorderPoint():
         return self._lon
 
     @property
-    def boats(self):
-        return self._boats
+    def route(self):
+        return self._route
 
-    @boats.setter
-    def boats(self, new_boats):
-        self._boats = new_boats
+    @route.setter
+    def route(self, newRoute):
+        self._route = newRoute
+
+    @property
+    def states(self):
+        return self._states
+
+    def addState(self, name, lat, lon, boats):
+        self._states.add({'name':name, 'lat':lat, 'lon':lon, 'boats':boats})
 
 
 print(f'OpenRouteService Route Retrieval Program {version}\n')
@@ -157,7 +173,8 @@ try:
         # Get past, and validate, header line
         try:
             assert borderReader.__next__() \
-                   == ['Name','Latitude','Longitude','Boats']
+                   == ['Name','Latitude','Longitude','State','StateLat',
+                       'StateLon','Boats']
         except AssertionError:
             print('Border point file header does not match expected. Please '\
                   'ensure that you chose the correct file as input, and try '\
@@ -165,8 +182,8 @@ try:
             raise
         for line in borderReader:
             if line[0] not in borders:
-                borders[line[0]] = BorderPoint(float(line[1]), float(line[2]),
-                                           int(line[3]))
+                borders[line[0]] = BorderPoint(float(line[1]), float(line[2]))
+            borders[line[0]].addState(line[3], line[4], line[5], line[6])
         del borderReader
         # Site data
         dialect = csv.Sniffer().sniff(lakeFile.read(1024)); lakeFile.seek(0)
@@ -186,14 +203,17 @@ try:
                 if line[0] not in sites:
                     sites[line[0]] = Site(float(line[1]), float(line[2]))
                 if line[4] == 'pH':
-                    sites[line[0]].addpH(float(line[5]),date.fromisoformat(line[3]))
+                    sites[line[0]].addpH(float(line[5]),
+                                         date.fromisoformat(line[3]))
                 elif line[4] == 'Calcium':
-                    sites[line[0]].addCa(float(line[5]),date.fromisoformat(line[3]))
+                    sites[line[0]].addCa(float(line[5]),
+                                         date.fromisoformat(line[3]))
             except ValueError:
                 pass
 
         # Create a data matrix to hold encoded polyline strings
         routeMatrix = full((len(borders),len(sites)), '', dtype=object)
+
 except FileNotFoundError as e:
     print(f'\nCould not find "{e.filename}". Please check for typing errors '\
           'and try again.\nFull error trace:')
@@ -220,6 +240,7 @@ while True:
 
 # Actual data retrieval
 count = 0
+ordinal = lambda n: "%d%s" % (n,"tsnrhtdd"[(n//10%10!=1)*(n%10<4)*n%10::4])
 badBorders, badSites = set(), set()
 start_time = time()
 client = openrouteservice.Client(key=key, retry_over_query_limit=True)
@@ -248,7 +269,7 @@ for bi, border in enumerate(borders):
         # Address several possible errors returned by the API
         except openrouteservice.exceptions.ApiError as e:
             print('\nAn error occurred while making an ORS Directions query. '\
-                  f'A total of {count} queries were made prior to the error. '\
+                  'The error occurred on the {ordinal(count)} query. '\
                   'A brief description is shown above the full error, as '\
                   'reported by the server:')
             if e.args[0] == 401:
@@ -290,6 +311,7 @@ for bi, border in enumerate(borders):
 
 # Done with data acquisition; report number of queries made to user
 print(f'Made a total of {count} ORS Directions queries.')
+del ordinal
 
 # Remove problematic locations (borders or sites) from dicts and matrix
 for i, k in enumerate(borders.keys()):
@@ -302,8 +324,13 @@ routeMatrix = delete(routeMatrix, list(badBorders), 0)
 routeMatrix = delete(routeMatrix, list(badSites), 1)
 
 # Convert object lists into an easier-to-retrieve format
-bordersList = [(i[0], i[1].lat, i[1].lon) for i in borders.items()]
-sitesList =   [(i[0], i[1].lat, i[1].lon) for i in sites.items()]
+bordersList = [
+    ( i[0], i[1].lat, i[1].lon, i[1].states )
+    for i in borders.items()]
+sitesList = [
+    ( i[0], i[1].lat, i[1].lon, i[1].pH, i[1].calcium, i[1].attractiveness,
+      i[1].initInfested )
+    for i in sites.items()]
 del i
 
 # Export data to file by pickling

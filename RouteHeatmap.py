@@ -435,8 +435,19 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Internalize pickled counties, sites, and routes
         feedback.setProgressText('Retrieving pickled routes from file...')
+        # For counties:
         with open(pickledFileName, 'rb') as pickledFile:
-                (countiesList, sitesList, routeMatrix) = pickle.load(pickledFile)
+            (countiesList, sitesList, routeMatrix) = pickle.load(pickledFile)
+        # For border points:
+        with open(borderFileName, 'rb') as borderFile:
+            (bordersList, bdrSitesList, bdrRouteMatrix) = pickle.load(borderFile)
+###     TODO: Update program to:
+###         Compare sites lists (must be the same)
+###         Use border routes in the model core (in the yearly loop)
+###     Examples:
+###         County items: (name, lat, lon, boats)
+###         Site items: (name, lat, lon, pH, calcium, attractiveness, initInfested)
+###         Border items: (name, lat, lon, states[set(dict(name, lat, lon, boats))])
 
         # Convert (name, lat, lon) tuples for counties and sites into classes
         counties = dict()
