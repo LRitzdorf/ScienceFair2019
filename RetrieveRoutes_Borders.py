@@ -107,7 +107,7 @@ class BorderPoint():
     def __init__(self, lat, lon):
         self._lat =    lat
         self._lon =    lon
-        self._states = set()
+        self._states = list()
 
     @property
     def lat(self):
@@ -122,7 +122,7 @@ class BorderPoint():
         return self._states
 
     def addState(self, name, lat, lon, boats):
-        self._states.add({'name':name, 'lat':lat, 'lon':lon, 'boats':boats})
+        self._states.append([name, lat, lon, boats])
 
 
 print(f'OpenRouteService Route Retrieval Program {version}\n')
@@ -254,12 +254,13 @@ for bi, border in enumerate(borders):
             start = (borders[border].lon, borders[border].lat)
             end = (sites[site].lon, sites[site].lat)
             count += 1
-            routes = client.directions((start, end))
+            routes = client.directions((start, end), instructions=False,
+                                       radiuses=[5000,5000])
             encoded = routes['routes'][0]['geometry']
         # Address several possible errors returned by the API
         except openrouteservice.exceptions.ApiError as e:
             print('\nAn error occurred while making an ORS Directions query. '\
-                  'The error occurred on the {ordinal(count)} query. '\
+                  f'The error occurred on the {ordinal(count)} query. '\
                   'A brief description is shown above the full error, as '\
                   'reported by the server:')
             if e.args[0] == 401:
@@ -267,19 +268,19 @@ for bi, border in enumerate(borders):
             elif e.args[0] == 403:
                 print('The API key is not valid.')
             elif e.args[0] == 404:
-                print('Unable to find requested object')
-            elif e.args[0] == 413:
-                print('The request is too large.')
-            elif e.args[0] == 429:
-                print('Query limit exceeded.')
-            elif e.args[0] == 500:
-                if e.args[1]['error']['code'] == 2099:
+                if e.args[1]['error']['code'] == 2010:
                     # Assume that the second point (the site) cannot be found
                     badSites.add(si)
                     print('Unroutable site (assumed) found; skipping...')
                     continue
                 else:
-                    print('An unknown server error occurred.')
+                    print('Unable to find requested object')
+            elif e.args[0] == 413:
+                print('The request is too large.')
+            elif e.args[0] == 429:
+                print('Query limit exceeded.')
+            elif e.args[0] == 500:
+                print('An unknown server error occurred.')
             elif e.args[0] == 501:
                 print('The server cannot fulfill this request.')
             elif e.args[0] == 503:
@@ -304,12 +305,15 @@ print(f'Made a total of {count} ORS Directions queries.')
 del ordinal
 
 # Remove problematic locations (borders or sites) from dicts and matrix
-for i, k in enumerate(borders.keys()):
+keys = list(borders.keys())
+for i, k in enumerate(keys):
     if i in badBorders:
         del borders[k]
-for i, k in enumerate(sites.keys()):
+keys = list(sites.keys())
+for i, k in enumerate(keys):
     if i in badSites:
         del sites[k]
+del keys
 routeMatrix = delete(routeMatrix, list(badBorders), 0)
 routeMatrix = delete(routeMatrix, list(badSites), 1)
 
