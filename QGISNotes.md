@@ -149,7 +149,8 @@ ORS limits API queries to **2500 per day**, but users can [contact them](https:/
 import openrouteservice
 end = (-114.63478,48.19400)
 start = (-114.31506,48.20218)
-client = openrouteservice.Client(key='5b3ce3597851110001cf6248e3379d3da4854bb79887b36149de715d')
+# Add actual ORS API key below
+client = openrouteservice.Client(key='')
 routes = client.directions((start,end))
 encoded = routes['routes'][0]['geometry']
 decoded = openrouteservice.convert.decode_polyline(encoded)
