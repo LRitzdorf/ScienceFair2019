@@ -607,13 +607,15 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Route distances are now stored in c[i][j]
         feedback.setProgressText('Calculating out-of-state route lengths... '\
                                  '(This could take a while)')
+        counter = 0
         for i, n in enumerate(borders):
             # Cancellation check
             if feedback.isCanceled():
                 return {None: None}
             for s in borders[n].states:
                 # Progress update
-                feedback.setProgress(round(100 * (i) / numStates))
+                counter += 1
+                feedback.setProgress(round(100 * counter / numStates))
 
                 for j in range(len(sites)):
                     encoded = bdrRouteMatrix[i][j]
@@ -628,7 +630,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                     # Add distance to array cb[i][j]
                     cb[i][j] = feat.geometry().length() * 10  # Converts to km
         # Route distances are now stored in cb[i][j]
-        del encoded, decoded, n, s
+        del encoded, decoded, n, s, counter
 
         #TODO: Pickle routeMatrix in QGIS temp folder to reduce processing time
         # for future alg runs
@@ -780,7 +782,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         #TODO: Border routes need to be added here somehow
         # Add field definitions:
         fields = QgsFields()
-        fList = [QgsField('County', QVariant.String),
+        fList = [QgsField('Origin', QVariant.String),
                  QgsField('Lake', QVariant.String),
                  QgsField('pH', QVariant.Double),
                  QgsField('pH Date', QVariant.String),
@@ -789,8 +791,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                  QgsField('Habitability', QVariant.Double),
                  QgsField('Attractiveness', QVariant.Int),
                  QgsField('Infestation Proportion', QVariant.Double),
-                 QgsField('Initially Infested', QVariant.Bool)]
-                 #TODO: Add another field for route type? (county|border)
+                 QgsField('Initially Infested', QVariant.Bool),
+                 QgsField('Origin Type', QVariant.String)]
         for field in fList:
             fields.append(field)
         del fList
@@ -805,20 +807,21 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         )
 
         # Add route polylines to route layer
-        feedback.setProgressText('Adding routes to route layer... '\
+        feedback.setProgressText('Adding routes to output layer... '\
                                  '(This could take a while)')
         # Create list of infestation proportions to use here
         avgInfest = list()
         #TODO: Find a way to store this for each year (adding multiple attribute
         # fields could be difficult - add YEARS number of fields initially?)
         # Note: Be sure to change [years - 1] index for this
-        for j in range(len(results[0][0])):
+        for j in range(results.shape[2]):
             avgInfest.append(float(sum(results[loop][years - 1][j] \
                                  for loop in range(MCLoops)) / MCLoops))
 
         for i, (cName, county) in enumerate(counties.items()):
             # Progress update
-            feedback.setProgress(round(100 * i / len(counties)))
+            feedback.setProgress(round(100 * i
+                                       / (len(counties) + len(borders))))
             for j, (sName, site) in enumerate(sites.items()):
                 # Cancellation check
                 if feedback.isCanceled():
@@ -838,14 +841,41 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.habitability,
                                     site.attractiveness,
                                     avgInfest[j],
-                                    site.initInfested])
+                                    site.initInfested,
+                                    'county'])
                 routeSink.addFeature(feat)
-        del cName, sName, avgInfest
+        for i, (bName, border) in enumerate(borders.items()):
+            # Progress update
+            feedback.setProgress(round(100 * (i + len(counties))
+                                       / (len(counties) + len(borders))))
+            for j, (sName, site) in enumerate(sites.items()):
+                # Cancellation check
+                if feedback.isCanceled():
+                    return {None: None}
+                feat = routeMatrix[i][j]
+                feat.setFields(fields, initAttributes=True)
+                # Transfer attributes from each site to its feature
+                #TODO: Include number of contaminated boats traveling on route
+                feat.setAttributes([bName,
+                                    sName,
+                                    site.pH,
+                                    (site.pHDate.isoformat() if site.pH \
+                                     != None else None),
+                                    site.calcium,
+                                    (site.calciumDate.isoformat() if \
+                                     site.calcium != None else None),
+                                    site.habitability,
+                                    site.attractiveness,
+                                    avgInfest[j],
+                                    site.initInfested,
+                                    'border'])
+                routeSink.addFeature(feat)
+        del cName, bName, sName, avgInfest, feat
         routeSink.flushBuffer()
         # All routes are now in routeSink as polyline features
 
         # Cleanup
-        del i, j, site, county
+        del i, j, site, county, border
 
 
 #TODO: All of this could be replaced by using a transparent line symbology
