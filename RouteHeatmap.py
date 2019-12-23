@@ -23,16 +23,15 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     layer, with more heavily traveled routes having higher weights.
     '''
 
-    INPUT =        'INPUT'         # Lake file
-    COUNTIES =     'COUNTIES'      # County file
-    ROUTES =       'ROUTES'        # Pickled route data file
-    MC_LOOPS =     'MC_LOOPS'      # Number of Monte Carlo loops to run
-    YEARS =        'YEARS'         # Number of years to simulate
-    PCT_DECONT =   'PCT_DECONT'    # Percent of all boats decontaminated
-##    OUTPUT =       'OUTPUT'        # Heatmap layer
-    ROUTE_OUTPUT = 'ROUTE_OUTPUT'  # Route layer (not as a heatmap)
-
-    iterationsPerYear = 8  # Number of trips boats are assumed to make per year
+    INPUT =         'INPUT'         # Lake file
+    COUNTIES =      'COUNTIES'      # County file
+    ROUTES =        'ROUTES'        # Pickled route data file
+    BORDER_ROUTES = 'BORDER_ROUTES' # Pickled border route data file
+    MC_LOOPS =      'MC_LOOPS'      # Number of Monte Carlo loops to run
+    YEARS =         'YEARS'         # Number of years to simulate
+    PCT_DECONT =    'PCT_DECONT'    # Percent of all boats decontaminated
+##    OUTPUT =        'OUTPUT'        # Heatmap layer
+    ROUTE_OUTPUT =  'ROUTE_OUTPUT'  # Route layer (not as a heatmap)
 
     def tr(self, string):
         '''
@@ -145,6 +144,15 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         self.addParameter(QgsProcessingParameterFile(
             self.ROUTES,
             self.tr('Pickled Route Data File (from RetrieveRoutes.py)'),
+            extension='pkl'
+        ))
+
+        # Add a parameter for the pickled routes input file
+        self.addParameter(QgsProcessingParameterFile(
+            self.BORDER_ROUTES,
+            self.tr(
+               'Pickled Border Route Data File (from RetrieveRoutes_Borders.py)'
+               ),
             extension='pkl'
         ))
 
@@ -348,6 +356,35 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 self._boats = new_boats
 
 
+        class Border():
+            '''
+            Border object; contains information for border entry points.
+            Border(self, lat, lon, states) -> Border object
+            where "states" is a list of state names, locations, and boats.
+            '''
+            def __init__(self, lat, lon, states):
+                self._lat =   lat
+                self._lon =   lon
+                self._states = []
+                self._states += states
+
+            @property
+            def lat(self):
+                return self._lat
+
+            @property
+            def lon(self):
+                return self._lon
+
+            @property
+            def states(self):
+                return self._states
+
+            @states.setter
+            def states(self, new_states):
+                self._states = new_states
+
+
         # Define habitability function
         def habitability(pH, calcium, lowpH, lowCalc):
             """
@@ -414,6 +451,12 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             self.ROUTES,
             context
         )
+        # Pickled border routes file
+        borderFileName = self.parameterAsFile(
+            parameters,
+            self.BORDER_ROUTES,
+            context
+        )
         # Number of Monte Carlo loops to run
         MCLoops = self.parameterAsInt(
             parameters,
@@ -433,21 +476,26 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             context
         )
 
-        # Internalize pickled counties, sites, and routes
+        # Internalize pickled counties, borders, sites, and routes
+        # Format:
+        #  Counties: name str, lat float, lon float, boats int
+        #  Borders: name str, lat float, lon float,
+        #           states list [name str, lat float, lon float, boats int]
+        #  Sites: name str, lat float, lon float, pH float|None,
+        #         calcium float|None, attractiveness int, initInfested bool
         feedback.setProgressText('Retrieving pickled routes from file...')
         # For counties:
         with open(pickledFileName, 'rb') as pickledFile:
-            (countiesList, sitesList, routeMatrix) = pickle.load(pickledFile)
-        # For border points:
+            (countiesList,sitesList,routeMatrix) = pickle.load(pickledFile)
+        # For borders
         with open(borderFileName, 'rb') as borderFile:
-            (bordersList, bdrSitesList, bdrRouteMatrix) = pickle.load(borderFile)
-###     TODO: Update program to:
-###         Compare sites lists (must be the same)
-###         Use border routes in the model core (in the yearly loop)
-###     Examples:
-###         County items: (name, lat, lon, boats)
-###         Site items: (name, lat, lon, pH, calcium, attractiveness, initInfested)
-###         Border items: (name, lat, lon, states[set(dict(name, lat, lon, boats))])
+            (bordersList,bdrSitesList,bdrRouteMatrix) = pickle.load(borderFile)
+        # Check to be sure routes are present for the same sites in each file
+        if not bdrSitesList == sitesList:
+            feedback.reportError(
+                'Lakes for in-state and border routes do not match. Aborting.',
+                fatalError=True)
+        del bdrSitesList
 
         # Convert (name, lat, lon) tuples for counties and sites into classes
         counties = dict()
@@ -456,10 +504,15 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         sites = dict()
         for item in sitesList:
             sites[item[0]] = Site(item[1], item[2])  # Add other data later
-        del countiesList, sitesList
+        borders = dict()
+        numStates = 0
+        for item in bordersList:
+            borders[item[0]] = Border(item[1], item[2], item[3])
+            numStates += len(item[3])
+        del item, countiesList, sitesList, bordersList
 
         # Internalize additional site data from file (i.e. attractiveness)
-        #TODO: Add list of new counties, sites to fetch routes for
+        #TODO: Add list of new counties and sites to fetch routes for
         with open(countyFileName, 'r') as countyFile, \
              open(siteFileName, 'r') as lakeFile:
             # Populate object lists from data files
@@ -467,10 +520,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             dialect = csv.Sniffer().sniff(countyFile.read(1024)); countyFile.seek(0)
             countyReader = csv.reader(countyFile, dialect)
             # Get past, and validate, header line
-            try:
-                assert countyReader.__next__() == \
-                       ['County','Latitude','Longitude','Boats','County Seat']
-            except AssertionError:
+            if not countyReader.__next__() == \
+                       ['County','Latitude','Longitude','Boats','County Seat']:
                 feedback.reportError(
                     'County file header does not match expected. Aborting.',
                     fatalError=True)
@@ -489,11 +540,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             dialect = csv.Sniffer().sniff(lakeFile.read(1024)); lakeFile.seek(0)
             lakeReader = csv.reader(lakeFile, dialect)
             # Get past, and validate, header line
-            try:
-                assert lakeReader.__next__() == \
+            if not lakeReader.__next__() == \
                        ['IDNumber','Latitude','Longitude','Date','Parameter', \
-                        'Value','Attractiveness','Infested']
-            except AssertionError:
+                        'Value','Attractiveness','Infested']:
                 feedback.reportError(
                     'Lake file header does not match expected. Aborting.',
                     fatalError=True)
@@ -531,16 +580,17 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         from random import randint
         from numpy import array, zeros
         c = zeros([len(counties),len(sites)],dtype=float)
+        cb = zeros([len(borders),len(sites)],dtype=float)
 
-        # Add route polylines to route layer
-        feedback.setProgressText('Calculating route lengths... '\
+        # Create route polylines
+        feedback.setProgressText('Calculating internal route lengths... '\
                                  '(This could take a while)')
         for i in range(len(counties)):
             # Cancellation check
             if feedback.isCanceled():
                 return {None: None}
             # Progress update
-            feedback.setProgress(int(100 * i / len(counties)))
+            feedback.setProgress(round(100 * i / len(counties)))
 
             for j in range(len(sites)):
                 encoded = routeMatrix[i][j]
@@ -554,8 +604,31 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 routeMatrix[i][j] = feat
                 # Add distance to array c[i][j]
                 c[i][j] = feat.geometry().length() * 10  # Gives length in km
-        del encoded, decoded
         # Route distances are now stored in c[i][j]
+        feedback.setProgressText('Calculating out-of-state route lengths... '\
+                                 '(This could take a while)')
+        for i, n in enumerate(borders):
+            # Cancellation check
+            if feedback.isCanceled():
+                return {None: None}
+            for s in borders[n].states:
+                # Progress update
+                feedback.setProgress(round(100 * (i) / numStates))
+
+                for j in range(len(sites)):
+                    encoded = bdrRouteMatrix[i][j]
+                    decoded = decode_polyline(encoded)
+                    feat = QgsFeature()
+                    # Set geometry, including a straight path to state center
+                    feat.setGeometry(QgsGeometry.fromPolyline(
+                        [s[1], s[2]] + [QgsPoint(pt[0], pt[1]) \
+                                        for pt in decoded['coordinates']]))
+                    # Store feature for later retrieval to save time
+                    bdrRouteMatrix[i][j] = feat
+                    # Add distance to array cb[i][j]
+                    cb[i][j] = feat.geometry().length() * 10  # Converts to km
+        # Route distances are now stored in cb[i][j]
+        del encoded, decoded, n, s
 
         #TODO: Pickle routeMatrix in QGIS temp folder to reduce processing time
         # for future alg runs
@@ -567,9 +640,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Model-specific variables:
         lowCalc = 28
         lowpH = 7.4
-        infestedBoatFraction = 127 / 39522  ## 2016 (used mussels + water)
-        ## 2017: 17/77235 mussels + 390 standing water
-        ## 2018: 16/109789 mussels + 447 standing water
+        infestedBoatFraction = 463 / 109789
+            ## 2018 (mussels + standing water)
+        outOfStateInfestedRatio = 64 / 12849
+            ## 2018 (mussels + water @ border stations, total out-of-state only)
         settleRisk = 0.02
         α = 2
         iterations_per_year = 8  # Assumed number of boat trips per year
@@ -580,26 +654,32 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 = habitability(site.pH, site.calcium, lowpH, lowCalc)
 
         # Set up arrays
-        # Computed in Model Core:
+        # Computed in Model:
         A = zeros(len(counties),dtype=float)
+        Ab = zeros(len(borders),dtype=float)
         T = zeros([len(counties),len(sites)],dtype=int)
+        Tb = zeros([len(borders),len(sites)],dtype=int)
         P = zeros(len(counties),dtype=int)
         t = zeros([len(counties),len(sites)],dtype=int)
         Q = zeros(len(sites),dtype=int)
         # Extracted from input:
         O = zeros(len(counties),dtype=int)
+        Ob = zeros(len(borders),dtype=int)
         W = zeros(len(sites),dtype=int)
-        # c has already been set up and populated with distances
+        # c has already been set up and populated with distances, as has cb
         # Results:
         results = zeros([MCLoops,years,len(sites)],dtype=bool)
+        feedback.pushInfo('Arrays set up')
 
-        # Set up O[i] and W[i]
+        # Set up O[i], Ob[i], and W[j]
         for i, county in enumerate(counties.values()):
             O[i] = county.boats
+        for i, border in enumerate(borders.values()):
+            Ob[i] = border.boats
         for j, site in enumerate(sites.values()):
             W[j] = site.attractiveness
-        # c has already been set up and populated with distances
-        feedback.pushInfo('Arrays set up; computed c[i][j], O[i], and W[i]')
+        # c has already been set up and populated with distances, as has cb
+        feedback.pushInfo('Computed c[i][j], cb[i][j], O[i], Ob[i], and W[j]')
 
         # Compute A[i]: balancing factor
         for i in range(len(counties)):
@@ -607,11 +687,26 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 A[i] += W[j] * (c[i][j] ** -α)
             A[i] = 1 / A[i]
 
+        # Compute Ab[i]: balancing factor for borders
+        for i in range(len(borders)):
+            for j in range(len(sites)):
+                Ab[i] += W[j] * (cb[i][j] ** -α)
+            Ab[i] = 1 / a[i]
+
         # Compute T[i][j]: total boats from county i to lake j
         for i in range(len(counties)):
             for j in range(len(sites)):
                 T[i][j] = A[i] * O[i] * W[j] * (c[i][j] ** -α)
-        feedback.pushInfo('Computed A[i] and T[i]')
+
+        # Compute Tb[i][j]: total boats from border i to lake j
+        for i in range(len(borders)):
+            for j in range(len(sites)):
+                Tb[i][j] = Ab[i] * Ob[i] * W[j] * (cb[i][j] ** -α)
+
+        feedback.pushInfo('Computed A[i], Ab[i], T[i][j], and Tb[i][j]')
+
+        #TODO: Use border routes in the model core (in the yearly loop)
+        #      Flow out-of-state boats in gradually through the year?
 
         # Begin Model Core and Monte Carlo loop
         feedback.setProgressText('Running model...')
@@ -634,7 +729,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 if feedback.isCanceled():
                     return {None: None}
                 # Progress update
-                feedback.setProgress(int(100 * \
+                feedback.setProgress(round(100 * \
                     ((MCLoop * years) + year + 1) / (MCLoops * years)))
 
                 for iteration in range(self.iterationsPerYear):
@@ -644,7 +739,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                         for j, site in enumerate(sites.values()):
                             if site.infested:
                                 P[i] += T[i][j]
-                        # Adjust for decontamination using percent_cleaned
+                        # Adjust for decontamination using percentCleaned
                         P[i] = P[i] * (1 - (percentCleaned / 100))
                     
                     # Compute t[i][j]: infested boats from county i to lake j
@@ -657,7 +752,13 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                     for j in range(len(sites)):
                         for i in range(len(counties)):
                             Q[j] += t[i][j]
-                    
+                        # Add out-of-state boats to Q[j], dividing up (mostly)
+                        # evenly between per-year iterations
+                        for i in range(len(borders)):
+                            Q[j] += (Tb[i][j] // (self.iterationsPerYear := n))\
+                                    + (Tb[i][j] % n if iteration == 0 else 0)
+                del n
+
                 # Update infestation states (with stochastic factor)
                 for j, site in enumerate(sites.values()):
                     for boat in range(Q[j]):
@@ -676,6 +777,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # End Model
         feedback.pushInfo('Completed Monte Carlo model')
 
+        #TODO: Border routes need to be added here somehow
         # Add field definitions:
         fields = QgsFields()
         fList = [QgsField('County', QVariant.String),
@@ -688,6 +790,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                  QgsField('Attractiveness', QVariant.Int),
                  QgsField('Infestation Proportion', QVariant.Double),
                  QgsField('Initially Infested', QVariant.Bool)]
+                 #TODO: Add another field for route type? (county|border)
         for field in fList:
             fields.append(field)
         del fList
@@ -715,7 +818,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         for i, (cName, county) in enumerate(counties.items()):
             # Progress update
-            feedback.setProgress(int(100 * i / len(counties)))
+            feedback.setProgress(round(100 * i / len(counties)))
             for j, (sName, site) in enumerate(sites.items()):
                 # Cancellation check
                 if feedback.isCanceled():
@@ -743,6 +846,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Cleanup
         del i, j, site, county
+
+
+#TODO: All of this could be replaced by using a transparent line symbology
 
 ##        # Heatmap processing (based on results of Monte Carlo model)
 ##        feedback.setProgressText('Building heatmap from model results...')
