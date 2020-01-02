@@ -791,6 +791,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                  QgsField('Attractiveness', QVariant.Int),
                  QgsField('Infestation Proportion', QVariant.Double),
                  QgsField('Initially Infested', QVariant.Bool),
+                 QgsField('Boats on Route', QVariant.Int),
+                 ## Ensure ^ is actually an integer
                  QgsField('Origin Type', QVariant.String)]
         for field in fList:
             fields.append(field)
@@ -828,7 +830,6 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 feat = routeMatrix[i][j]
                 feat.setFields(fields, initAttributes=True)
                 # Transfer attributes from each site to its feature
-                #TODO: Include number of contaminated boats traveling on route
                 feat.setAttributes([cName,
                                     sName,
                                     site.pH,
@@ -841,6 +842,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.attractiveness,
                                     avgInfest[j],
                                     site.initInfested,
+                                    t[i][j],
+                                    ## Ensure ^ is actually an integer
                                     'internal county'])
                 routeSink.addFeature(feat)
         for i, (tName, state) in enumerate(states.items()):
@@ -854,7 +857,6 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 feat = stRouteMatrix[i][j]
                 feat.setFields(fields, initAttributes=True)
                 # Transfer attributes from each site to its feature
-                #TODO: Include number of contaminated boats on route
                 feat.setAttributes([tName,
                                     sName,
                                     site.pH,
@@ -867,6 +869,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.attractiveness,
                                     avgInfest[j],
                                     site.initInfested,
+                                    Ts[i][j],
+                                    ## Ensure ^ is actually an integer
                                     'external district'])
                 routeSink.addFeature(feat)
         del cName, tName, sName, avgInfest, feat
