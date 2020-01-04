@@ -24,13 +24,14 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     layer, with more heavily traveled routes having higher weights.
     '''
 
-    ROUTES =       'ROUTES'       # Pickled route data file
-    STATE_ROUTES = 'STATE_ROUTES' # Pickled state route data file
-    MC_LOOPS =     'MC_LOOPS'     # Number of Monte Carlo loops to run
-    YEARS =        'YEARS'        # Number of years to simulate
-    PCT_DECONT =   'PCT_DECONT'   # Percent of all boats decontaminated
-##    OUTPUT =       'OUTPUT'       # Heatmap layer
-    ROUTE_OUTPUT = 'ROUTE_OUTPUT' # Route layer (not as a heatmap)
+    ROUTES =        'ROUTES'        # Pickled route data file
+    STATE_ROUTES =  'STATE_ROUTES'  # Pickled state route data file
+    MC_LOOPS =      'MC_LOOPS'      # Number of Monte Carlo loops to run
+    YEARS =         'YEARS'         # Number of years to simulate
+    PROP_DECONT =   'PROP_DECONT'   # Proportion of all boats decontaminated
+    OOS_CONT_PROP = 'OOS_CONT_PROP' # Out-of-state boat contamination proportion
+##    OUTPUT =        'OUTPUT'        # Heatmap layer
+    ROUTE_OUTPUT =  'ROUTE_OUTPUT'  # Route layer (not as a heatmap)
 
     def tr(self, string):
         '''
@@ -160,7 +161,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             self.MC_LOOPS,
             self.tr('Number of Monte Carlo loops (repetitive trials) to run'),
             QgsProcessingParameterNumber.Integer,
-            minValue=1, maxValue=50
+            minValue=1, maxValue=1000
         ))
 
         # Add a parameter for the number of years to simulate
@@ -174,11 +175,21 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Add a paramater for the percentage of boats that are decontaminated
         self.addParameter(QgsProcessingParameterNumber(
-            self.PCT_DECONT,
-            self.tr('Percentage of all boats that are deconaminated'),
-            QgsProcessingParameterNumber.Integer,
-            defaultValue=0,
-            minValue=0, maxValue=100
+            self.PROP_DECONT,
+            self.tr('Proportion of all boats that are deconaminated'),
+            QgsProcessingParameterNumber.Double,
+            defaultValue=0.0,
+            minValue=0.0, maxValue=1.0
+        ))
+
+        # Add a parameter for border contamination proportion
+        # From 2018 FWP data:  64 / 24539  ~0.26%
+        self.addParameter(QgsProcessingParameterNumber(
+            self.OOS_CONT_PROP,
+            self.tr('Proportion of out-of-state boats that ARE contaminated'),
+            QgsProcessingParameterNumber.Double,
+            defaultValue=(64 / 24539),
+            minValue=0.0, maxValue=1.0
         ))
 
         # Consider adding additional vector output layers for lakes and county
@@ -382,10 +393,16 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             self.YEARS,
             context
         )
-        # Percent of all boats assumed to be decontaminated
-        percentCleaned = self.parameterAsInt(
+        # Proportion of all boats assumed to be decontaminated
+        propCleaned = self.parameterAsDouble(
             parameters,
-            self.PCT_DECONT,
+            self.PROP_DECONT,
+            context
+        )
+        # Proportion of out-of-state boats assumed to be contaminated
+        OoSContProp = self.parameterAsDouble(
+            parameters,
+            self.OOS_CONT_PROP,
             context
         )
 
@@ -490,10 +507,6 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Model-specific variables:
         lowCalc = 28
         lowpH = 7.4
-        infestedBoatFraction = 463 / 109789
-            ## 2018 (mussels + standing water)
-        outOfStateInfestedRatio = 64 / 12849
-            ## 2018 (mussels + water @ border stations, total out-of-state only)
         settleRisk = 0.02
         α = 2
         iterationsPerYear = 8  # Assumed number of boat trips per year
@@ -553,13 +566,13 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             for j in range(len(sites)):
                 Ts[i][j] = As[i] * Os[i] * W[j] * (cs[i][j] ** -α)
 
+        # Generate ts[i][j]: contaminated boats from state i to lake j
+        ts = Ts * OoSContProp
+
         feedback.pushInfo('Computed A[i], As[i], T[i][j], and Ts[i][j]')
 
-        #TODO: Use border routes in the model core (in the yearly loop)
-        #      Flow out-of-state boats in gradually through the year?
-
         # Begin Model Core and Monte Carlo loop
-        feedback.setProgressText('Running model...')
+        feedback.setProgressText('\nRunning model...')
 
         for MCLoop in range(MCLoops):
 
@@ -572,8 +585,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             # Begin Main Loop
             for year in range(years):
                 feedback.pushInfo(f'\tYear {year}')
-                P.fill(0.0)
-                Q.fill(0.0)
+                P.fill(0)
+                Q.fill(0)
                 
                 # Cancellation check
                 if feedback.isCanceled():
@@ -585,15 +598,18 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 for iteration in range(iterationsPerYear):
                     
                     # Compute P[i]: potentially infested boats in county i
+                    # Note: This assumes that boats take on the status of the
+                    #  lakes they visit. I.e. a contaminated boat visiting a
+                    #  clean lake could contaminate the lake, but the boat
+                    #  becomes clean.
+                    P.fill(0)
                     for i in range(len(counties)):
                         for j, site in enumerate(sites.values()):
                             if site.infested:
                                 P[i] += T[i][j]
-                        # Adjust for decontamination using percentCleaned
-                        P[i] = P[i] * (1 - (percentCleaned / 100))
                     
                     # Compute t[i][j]: infested boats from county i to lake j
-                    t.fill(0.0)
+                    t.fill(0)
                     for i in range(len(counties)):
                         for j in range(len(sites)):
                             t[i][j] = A[i] * P[i] * W[j] * (c[i][j] ** -α)
@@ -605,9 +621,13 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                         # Add out-of-state boats to Q[j], dividing up (mostly)
                         # evenly between per-year iterations
                         for i in range(len(states)):
-                            Q[j] += (Ts[i][j] // iterationsPerYear)\
-                                + (Ts[i][j] % iterationsPerYear \
+                            Q[j] += (ts[i][j] // iterationsPerYear)\
+                                + (ts[i][j] % iterationsPerYear \
                                    if iteration == 0 else 0)
+
+                    # Adjust for decontamination using propCleaned
+                    for x in range(Q.shape[0]):
+                        Q[x] = round(Q[x] * (1 - propCleaned))
 
                 # Update infestation states (with stochastic factor)
                 for j, site in enumerate(sites.values()):
@@ -622,6 +642,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
             # End Main Loop
 
+        del x
         # End Monte Carlo loop and Model Core
 
         # End Model
