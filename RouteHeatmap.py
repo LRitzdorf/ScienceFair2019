@@ -24,14 +24,15 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     layer, with more heavily traveled routes having higher weights.
     '''
 
-    ROUTES =        'ROUTES'        # Pickled route data file
-    STATE_ROUTES =  'STATE_ROUTES'  # Pickled state route data file
-    MC_LOOPS =      'MC_LOOPS'      # Number of Monte Carlo loops to run
-    YEARS =         'YEARS'         # Number of years to simulate
-    PROP_DECONT =   'PROP_DECONT'   # Proportion of all boats decontaminated
-    OOS_CONT_PROP = 'OOS_CONT_PROP' # Out-of-state boat contamination proportion
-##    OUTPUT =        'OUTPUT'        # Heatmap layer
-    ROUTE_OUTPUT =  'ROUTE_OUTPUT'  # Route layer (not as a heatmap)
+    ROUTES =        'ROUTES'       # Pickled route data file
+    STATE_ROUTES =  'STATE_ROUTES' # Pickled state route data file
+    MC_LOOPS =      'MC_LOOPS'     # Number of Monte Carlo loops to run
+    YEARS =         'YEARS'        # Number of years to simulate
+    PROP_DECONT =   'PROP_DECONT'  # Proportion of all boats decontaminated
+    INF_PROP =      'INF_PROP'     # Out-of-state boat contamination proportion
+    UNINF_PROP =    'UNINF_PROP'   # Out-of-state boat contamination proportion
+##    OUTPUT =        'OUTPUT'       # Heatmap layer
+    ROUTE_OUTPUT =  'ROUTE_OUTPUT' # Route layer (not as a heatmap)
 
     def tr(self, string):
         '''
@@ -182,13 +183,25 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             minValue=0.0, maxValue=1.0
         ))
 
-        # Add a parameter for border contamination proportion
+        # Add a parameter for infested state contamination proportion
         # From 2018 FWP data:  64 / 24539  ~0.26%
         self.addParameter(QgsProcessingParameterNumber(
-            self.OOS_CONT_PROP,
-            self.tr('Proportion of out-of-state boats that ARE contaminated'),
+            self.INF_PROP,
+            self.tr('Proportion of out-of-state boats from an infested state \
+                     that are contaminated'),
             QgsProcessingParameterNumber.Double,
             defaultValue=(64 / 24539),
+            minValue=0.0, maxValue=1.0
+        ))
+
+        # Add a parameter for uninfested state contamination proportion
+        # Assume 1/100 of infested:  64 / (24539 * 100)  ~0.0026%
+        self.addParameter(QgsProcessingParameterNumber(
+            self.UNINF_PROP,
+            self.tr('Proportion of out-of-state boats from an uninfested \
+                    state that are contaminated'),
+            QgsProcessingParameterNumber.Double,
+            defaultValue=(64 / (24539 * 100)),
             minValue=0.0, maxValue=1.0
         ))
 
@@ -297,11 +310,12 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             Border(self, lat, lon, states) -> Border object
             where "states" is a list of state names, locations, and boats.
             '''
-            def __init__(self, lat, lon, boats, border):
-                self._lat =    lat
-                self._lon =    lon
-                self._boats =  boats
-                self._border = border
+            def __init__(self, lat, lon, boats, infested, border):
+                self._lat =      lat
+                self._lon =      lon
+                self._boats =    boats
+                self._infested = infested
+                self._border =   border
 
             @property
             def lat(self):
@@ -314,6 +328,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             @property
             def boats(self):
                 return self._boats
+
+            @property
+            def infested(self):
+                return self._infested
 
             @property
             def border(self):
@@ -399,10 +417,16 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             self.PROP_DECONT,
             context
         )
-        # Proportion of out-of-state boats assumed to be contaminated
-        OoSContProp = self.parameterAsDouble(
+        # Proportion of infested out-of-state boats assumed to be contaminated
+        infProp = self.parameterAsDouble(
             parameters,
-            self.OOS_CONT_PROP,
+            self.INF_PROP,
+            context
+        )
+        # Proportion of uninfested out-of-state boats assumed to be contaminated
+        uninfProp = self.parameterAsDouble(
+            parameters,
+            self.UNINF_PROP,
             context
         )
 
@@ -440,7 +464,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                   item[5], item[6])
         states = dict()
         for item in statesList:
-            states[item[0]] = State(item[1], item[2], item[3], item[4])
+            states[item[0]] = State(item[1], item[2], item[3], item[4], item[5])
         del item, countiesList, sitesList, statesList
 
 
@@ -510,6 +534,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         settleRisk = 0.02
         α = 2
         iterationsPerYear = 8  # Assumed number of boat trips per year
+        #TODO: Should probably make some of these but alpha user parameters
 
         # Calculate habitability values
         for site in sites.values():
@@ -522,6 +547,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         As = zeros(len(states),dtype=float)
         T = zeros([len(counties),len(sites)],dtype=int)
         Ts = zeros([len(states),len(sites)],dtype=int)
+        ts = zeros([len(states),len(sites)],dtype=int)
         P = zeros(len(counties),dtype=int)
         t = zeros([len(counties),len(sites)],dtype=int)
         Q = zeros(len(sites),dtype=int)
@@ -567,7 +593,14 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 Ts[i][j] = As[i] * Os[i] * W[j] * (cs[i][j] ** -α)
 
         # Generate ts[i][j]: contaminated boats from state i to lake j
-        ts = Ts * OoSContProp
+        for i, state in enumerate(states.values()):
+            # Compute proportional reduction by matrix column (i.e. by state)
+            if state.infested:
+                f = infProp
+            elif not state.infested:
+                f = uninfProp
+            ts[i] = round(Ts[i] * f)
+        del f
 
         feedback.pushInfo('Computed A[i], As[i], T[i][j], and Ts[i][j]')
 
