@@ -681,7 +681,6 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # End Model
         feedback.pushInfo('Completed Monte Carlo model')
 
-        #TODO: Border routes need to be added here somehow
         # Add field definitions:
         fields = QgsFields()
         fList = [QgsField('Origin', QVariant.String),
