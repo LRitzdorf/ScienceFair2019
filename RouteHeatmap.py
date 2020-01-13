@@ -599,7 +599,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 f = infProp
             elif not state.infested:
                 f = uninfProp
-            ts[i] = round(Ts[i] * f)
+            ts[i] = [int(round(n * f)) for n in Ts[i]]
         del f
 
         feedback.pushInfo('Computed A[i], As[i], T[i][j], and Ts[i][j]')
@@ -665,7 +665,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 # Update infestation states (with stochastic factor)
                 for j, site in enumerate(sites.values()):
                     for boat in range(Q[j]):
-                        if randint(1, (1/settleRisk)
+                        if randint(1, (1 / settleRisk)
                                    - round(site.habitability * 5)) == 1:
                             site.infest()
 
@@ -692,6 +692,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                  QgsField('Infestation Proportion', QVariant.Double),
                  QgsField('Initially Infested', QVariant.Bool),
                  QgsField('Boats on Route', QVariant.Int),
+                 QgsField('Origin Infested', QVariant.Bool),
                  QgsField('Origin Type', QVariant.String)]
         for field in fList:
             fields.append(field)
@@ -738,6 +739,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     avgInfest[j],
                                     site.initInfested,
                                     int(t[i][j]),
+                                    None,
                                     'internal county'])
                 routeSink.addFeature(feat)
         for i, (tName, state) in enumerate(states.items()):
@@ -760,6 +762,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     avgInfest[j],
                                     site.initInfested,
                                     int(Ts[i][j]),
+                                    state.infested,
                                     'external district'])
                 routeSink.addFeature(feat)
         del cName, tName, sName, avgInfest, feat
