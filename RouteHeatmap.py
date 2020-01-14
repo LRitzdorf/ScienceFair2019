@@ -689,14 +689,17 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                  QgsField('Calcium', QVariant.Double),
                  QgsField('Habitability', QVariant.Double),
                  QgsField('Attractiveness', QVariant.Int),
-                 QgsField('Infestation Proportion', QVariant.Double),
+                 # Inserted fields from below will go here
                  QgsField('Initially Infested', QVariant.Bool),
                  QgsField('Boats on Route', QVariant.Int),
                  QgsField('Origin Infested', QVariant.Bool),
                  QgsField('Origin Type', QVariant.String)]
+        for n in range(years):
+            fList.insert(n + 6,
+                QgsField(f'Year {n} Infestation Proportion', QVariant.Double))
         for field in fList:
             fields.append(field)
-        del fList
+        del fList, n
         # Sink and ID for the route output layer
         (routeSink, routeSinkID) = self.parameterAsSink(
             parameters,
@@ -710,14 +713,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Add route polylines to route layer
         feedback.setProgressText('Adding routes to output layer... '\
                                  '(This could take a while)')
-        # Create list of infestation proportions to use here
-        avgInfest = list()
-        #TODO: Find a way to store this for each year (adding multiple attribute
-        # fields could be difficult - add YEARS number of fields initially?)
-        # Note: Be sure to change [years - 1] index for this
-        for j in range(results.shape[2]):
-            avgInfest.append(float(sum(results[loop][years - 1][j] \
-                                 for loop in range(MCLoops)) / MCLoops))
+        # Create matrix of infestation proportions to use here
+        # Format: results[loop][year][site] --> avgInfest[site][year]
+        avgInfest = sum(results.swapaxes(1, 2)) / MCLoops
 
         for i, (cName, county) in enumerate(counties.items()):
             # Progress update
@@ -735,12 +733,13 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.pH,
                                     site.calcium,
                                     site.habitability,
-                                    site.attractiveness,
-                                    avgInfest[j],
-                                    site.initInfested,
-                                    int(t[i][j]),
-                                    None,
-                                    'internal county'])
+                                    site.attractiveness]
+                                   + [float(avgInfest[j][y])
+                                      for y in range(years)]
+                                   + [site.initInfested,
+                                      int(t[i][j]),
+                                      None,
+                                      'internal county'])
                 routeSink.addFeature(feat)
         for i, (tName, state) in enumerate(states.items()):
             # Cancellation check
@@ -758,9 +757,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.pH,
                                     site.calcium,
                                     site.habitability,
-                                    site.attractiveness,
-                                    avgInfest[j],
-                                    site.initInfested,
+                                    site.attractiveness]
+                                   + [float(avgInfest[j][y])
+                                      for y in range(years)]
+                                   + [site.initInfested,
                                     int(Ts[i][j]),
                                     state.infested,
                                     'external district'])
