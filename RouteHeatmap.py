@@ -470,7 +470,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Begin Processing
         feedback.pushInfo('Beginning processing')
-        from random import randint
+        from random import choices, randint
         from numpy import array, zeros
         c = zeros([len(counties),len(sites)],dtype=float)
         cs = zeros([len(states),len(sites)],dtype=float)
@@ -547,7 +547,6 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         As = zeros(len(states),dtype=float)
         T = zeros([len(counties),len(sites)],dtype=int)
         Ts = zeros([len(states),len(sites)],dtype=int)
-        ts = zeros([len(states),len(sites)],dtype=int)
         P = zeros(len(counties),dtype=int)
         t = zeros([len(counties),len(sites)],dtype=int)
         Q = zeros(len(sites),dtype=int)
@@ -591,16 +590,6 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         for i in range(len(states)):
             for j in range(len(sites)):
                 Ts[i][j] = As[i] * Os[i] * W[j] * (cs[i][j] ** -α)
-
-        # Generate ts[i][j]: contaminated boats from state i to lake j
-        for i, state in enumerate(states.values()):
-            # Compute proportional reduction by matrix column (i.e. by state)
-            if state.infested:
-                f = infProp
-            elif not state.infested:
-                f = uninfProp
-            ts[i] = [int(round(n * f)) for n in Ts[i]]
-        del f
 
         feedback.pushInfo('Computed A[i], As[i], T[i][j], and Ts[i][j]')
 
@@ -649,20 +638,31 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                     
                     # Compute Q[j]: total infested boats to lake j
                     for j in range(len(sites)):
+                        OoS = 0
                         for i in range(len(counties)):
                             Q[j] += t[i][j]
-                        # Add out-of-state boats to Q[j], dividing up (mostly)
-                        # evenly between per-year iterations
-                        for i in range(len(states)):
-                            Q[j] += (ts[i][j] // iterationsPerYear)\
-                                + (ts[i][j] % iterationsPerYear \
-                                   if iteration == 0 else 0)
+                        # Add contaminated out-of-state boats to Q[j], dividing
+                        # up (mostly) evenly between weekly iterations
+                        for i, state in enumerate(states.values()):
+                            OoS += (Ts[i][j] // iterationsPerYear) \
+                                   + (Ts[i][j] % iterationsPerYear \
+                                      if iteration == 0 else 0)
+                            # Randomly choose whether each out-of-state boat is
+                            # contaminated; if so, add to Q[j]
+                            for boat in range(OoS):
+                                if choices([1,2],
+                                        [(infProb if state.infested else uninfProb),
+                                        1 - (infProb if state.infested else uninfProb)] \
+                                           ) == 1:
+                                    Q[j] += 1
 
                     # Adjust for decontamination using propCleaned
                     for x in range(Q.shape[0]):
                         Q[x] = round(Q[x] * (1 - propCleaned))
 
                 # Update infestation states (with stochastic factor)
+                #TODO: Reevaluate how this works, see if random.choices (as
+                # above) would do better
                 for j, site in enumerate(sites.values()):
                     for boat in range(Q[j]):
                         if randint(1, (1 / settleRisk)
@@ -675,7 +675,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
             # End Main Loop
 
-        del x
+        del OoS, state, x, boat
         # End Monte Carlo loop and Model Core
 
         # End Model
