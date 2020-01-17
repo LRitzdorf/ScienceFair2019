@@ -470,7 +470,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Begin Processing
         feedback.pushInfo('Beginning processing')
-        from random import choices, randint
+        from random import choices
         from numpy import array, zeros
         c = zeros([len(counties),len(sites)],dtype=float)
         cs = zeros([len(states),len(sites)],dtype=float)
@@ -554,7 +554,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         O = zeros(len(counties),dtype=int)
         Os = zeros(len(states),dtype=int)
         W = zeros(len(sites),dtype=int)
-        # c has already been set up and populated with distances, as has cb
+        # c has already been set up and populated with distances, as has cs
         # Results:
         results = zeros([MCLoops,years,len(sites)],dtype=bool)
         feedback.pushInfo('Arrays set up')
@@ -650,10 +650,12 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                             # Randomly choose whether each out-of-state boat is
                             # contaminated; if so, add to Q[j]
                             for boat in range(OoS):
-                                if choices([1,2],
-                                        [(infProb if state.infested else uninfProb),
-                                        1 - (infProb if state.infested else uninfProb)] \
-                                           ) == 1:
+                                if choices(
+                                    [1, 2],
+                                    [(infProb if state.infested else uninfProb),
+                                     1 - (infProb if state.infested \
+                                          else uninfProb)]
+                                    ) == 1:
                                     Q[j] += 1
 
                     # Adjust for decontamination using propCleaned
@@ -661,12 +663,13 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                         Q[x] = round(Q[x] * (1 - propCleaned))
 
                 # Update infestation states (with stochastic factor)
-                #TODO: Reevaluate how this works, see if random.choices (as
-                # above) would do better
                 for j, site in enumerate(sites.values()):
                     for boat in range(Q[j]):
-                        if randint(1, (1 / settleRisk)
-                                   - round(site.habitability * 5)) == 1:
+                        if choices(
+                            [1, 2],
+                            [settleRisk * (2 * site.habitability),
+                             1 - (settleRisk * (2 * site.habitability))]
+                            ) == 1:
                             site.infest()
 
                 # Store results
