@@ -3,12 +3,11 @@
 # Computational model of Dreissenid mussel spread in a given water system,
 # built as a QGIS processing script.
 
-# The *.pickle output file created by RetrieveRoutes.py is to be used as the
-# "Pickled Routes" input item.
-
 # Computes mussel travel, as facilitated by boat traffic, in the given water
-# system, then outputs the routes traveled by contaminated boats as a heatmap
-# layer, with more heavily traveled routes having higher weights.
+# system, then outputs the routes traveled by contaminated boats. This can be
+# rendered as a heatmap layer, with more heavily traveled routes having higher
+# weights. Such a map highlights sections of road where watercraft inspection
+# stations could intercept many contaminated boats.
 
 
 from PyQt5.QtCore import QCoreApplication, QVariant
@@ -651,11 +650,11 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                             # contaminated; if so, add to Q[j]
                             for boat in range(OoS):
                                 if choices(
-                                    [1, 2],
-                                    [(infProb if state.infested else uninfProb),
-                                     1 - (infProb if state.infested \
-                                          else uninfProb)]
-                                    ) == 1:
+                                    [1, 0],
+                                    [(infProp if state.infested else uninfProp),
+                                     1 - (infProp if state.infested \
+                                          else uninfProp)]
+                                    )[0] == 1:
                                     Q[j] += 1
 
                     # Adjust for decontamination using propCleaned
@@ -666,10 +665,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 for j, site in enumerate(sites.values()):
                     for boat in range(Q[j]):
                         if choices(
-                            [1, 2],
+                            [1, 0],
                             [settleRisk * (2 * site.habitability),
                              1 - (settleRisk * (2 * site.habitability))]
-                            ) == 1:
+                            )[0] == 1:
                             site.infest()
 
                 # Store results
