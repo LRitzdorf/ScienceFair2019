@@ -548,6 +548,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         Ts = zeros([len(states),len(sites)],dtype=int)
         P = zeros(len(counties),dtype=int)
         t = zeros([len(counties),len(sites)],dtype=int)
+        ts = zeros([len(states),len(sites)],dtype=int)
         Q = zeros(len(sites),dtype=int)
         # Extracted from input:
         O = zeros(len(counties),dtype=int)
@@ -655,6 +656,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                      1 - (infProp if state.infested \
                                           else uninfProp)]
                                     )[0] == 1:
+                                    ts[i][j] += 1
                                     Q[j] += 1
 
                     # Adjust for decontamination using propCleaned
@@ -763,7 +765,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                    + [float(avgInfest[j][y])
                                       for y in range(years)]
                                    + [site.initInfested,
-                                    int(Ts[i][j]),
+                                    int(ts[i][j]),
                                     state.infested,
                                     'external district'])
                 routeSink.addFeature(feat)
