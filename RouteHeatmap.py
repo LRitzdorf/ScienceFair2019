@@ -489,14 +489,14 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 decoded = decode_polyline(encoded)
                 feat = QgsFeature()
                 feat.setGeometry(QgsGeometry.fromPolyline(
-                    [QgsPoint(pt[0], pt[1]) for pt in decoded['coordinates']]
-                ))
+                    [QgsPoint(pt[0], pt[1]) for pt in decoded['coordinates']]))
                 # Store feature for later retrieval (to avoid taking a really
                 # long time regenerating feature geometry when creating output)
                 routeMatrix[i][j] = feat
                 # Add distance to array c[i][j]
                 c[i][j] = feat.geometry().length() * 10  # Gives length in km
         # Route distances are now stored in c[i][j]
+
         feedback.setProgressText('Calculating out-of-state route lengths... '\
                                  '(This could take a while)')
         for i, s in enumerate(states.values()):
@@ -505,9 +505,10 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 return {None: None}
             # Progress update
             feedback.setProgress(round(100 * i / (len(states) - 1)))
-            encoded = stRouteMatrix[i][j]
-            decoded = decode_polyline(encoded)
+
             for j in range(len(sites)):
+                encoded = stRouteMatrix[i][j]
+                decoded = decode_polyline(encoded)
                 feat = QgsFeature()
                 # Set geometry, including a straight path to state center
                 feat.setGeometry(QgsGeometry.fromPolyline(
@@ -697,7 +698,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 QgsField(f'Year {n} Infestation Proportion', QVariant.Double))
         for n in range(years):
             fList.insert(n + 6,
-                QgsField(f'Year {n} Boats on Route', QVariant.Int))
+                QgsField(f'Year {n} Boats on Route', QVariant.Double))
         for field in fList:
             fields.append(field)
         del fList, n
@@ -738,7 +739,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.calcium,
                                     site.habitability,
                                     site.attractiveness]
-                                   + [int(inStBoats[y][i][j])
+                                   + [float(inStBoats[y][i][j])
                                       for y in range(years)]
                                    + [float(avgInfest[j][y])
                                       for y in range(years)]
@@ -763,7 +764,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.calcium,
                                     site.habitability,
                                     site.attractiveness]
-                                   + [int(outStBoats[y][i][j])
+                                   + [float(outStBoats[y][i][j])
                                       for y in range(years)]
                                    + [float(avgInfest[j][y])
                                       for y in range(years)]
