@@ -532,7 +532,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         lowpH = 7.4
         settleRisk = 0.02
         α = 2
-        iterationsPerYear = 8  # Assumed number of boat trips per year
+        tripsPerYear = 8  # Assumed number of boat trips per year
         #TODO: Should probably make some of these but alpha user parameters
 
         # Calculate habitability values
@@ -547,9 +547,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         T = zeros([len(counties),len(sites)],dtype=int)
         Ts = zeros([len(states),len(sites)],dtype=int)
         P = zeros(len(counties),dtype=int)
-        t = zeros([len(counties),len(sites)],dtype=int)
-        ts = zeros([len(states),len(sites)],dtype=int)
-        Q = zeros(len(sites),dtype=int)
+        t = zeros([MCLoops,years,len(counties),len(sites)],dtype=int)
+        ts = zeros([MCLoops,years,len(states),len(sites)],dtype=int)
+        Q = zeros([len(counties),len(sites)],dtype=int)
         # Extracted from input:
         O = zeros(len(counties),dtype=int)
         Os = zeros(len(states),dtype=int)
@@ -600,72 +600,66 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
             feedback.pushInfo(f'Monte Carlo loop {MCLoop}')
 
-            # Reset infestation states
+            # Reset infestation statuses
             for site in sites.values():
                 site.resetInfested()
 
             # Begin Main Loop
             for year in range(years):
                 feedback.pushInfo(f'\tYear {year}')
-                P.fill(0)
-                Q.fill(0)
                 
                 # Cancellation check
                 if feedback.isCanceled():
                     return {None: None}
                 # Progress update
-                feedback.setProgress(round(100 * \
+                feedback.setProgress(int(100 * \
                     ((MCLoop * years) + year + 1) / (MCLoops * years)))
 
-                for iteration in range(iterationsPerYear):
-                    
-                    # Compute P[i]: potentially infested boats in county i
-                    # Note: This assumes that boats take on the status of the
-                    #  lakes they visit. I.e. a contaminated boat visiting a
-                    #  clean lake could contaminate the lake, but the boat
-                    #  becomes clean.
-                    P.fill(0)
-                    for i in range(len(counties)):
-                        for j, site in enumerate(sites.values()):
-                            if site.infested:
-                                P[i] += T[i][j]
-                    
-                    # Compute t[i][j]: infested boats from county i to lake j
-                    t.fill(0)
-                    for i in range(len(counties)):
-                        for j in range(len(sites)):
-                            t[i][j] = A[i] * P[i] * W[j] * (c[i][j] ** -α)
-                    
-                    # Compute Q[j]: total infested boats to lake j
+                # Compute P[i]: potentially infested boats in county i
+                # Note: This assumes that boats take on the status of the
+                #  lakes they visit. I.e. a contaminated boat visiting a
+                #  clean lake could contaminate the lake, but the boat
+                #  becomes clean. Thus, in a given year, each county always has
+                #  the same number of contaminated boats from the same lakes.
+                P.fill(0)
+                for i in range(len(counties)):
+                    for j, site in enumerate(sites.values()):
+                        if site.infested:
+                            P[i] += T[i][j]
+
+                # Compute t[i][j]: infested boats from county i to lake j
+                for i in range(len(counties)):
                     for j in range(len(sites)):
-                        OoS = 0
-                        for i in range(len(counties)):
-                            Q[j] += t[i][j]
-                        # Add contaminated out-of-state boats to Q[j], dividing
-                        # up (mostly) evenly between weekly iterations
-                        for i, state in enumerate(states.values()):
-                            OoS += (Ts[i][j] // iterationsPerYear) \
-                                   + (Ts[i][j] % iterationsPerYear \
-                                      if iteration == 0 else 0)
-                            # Randomly choose whether each out-of-state boat is
-                            # contaminated; if so, add to Q[j]
-                            for boat in range(OoS):
-                                if choices(
-                                    [1, 0],
-                                    [(infProp if state.infested else uninfProp),
-                                     1 - (infProp if state.infested \
-                                          else uninfProp)]
-                                    )[0] == 1:
-                                    ts[i][j] += 1
-                                    Q[j] += 1
+                        t[MCLoop][year][i][j] \
+                                        = A[i] * P[i] * W[j] * (c[i][j] ** -α)
+
+                # Compute Q[i][j]: yearly infested boats, i to j
+                Q.fill(0)
+                for j in range(len(sites)):
+                    for i in range(len(counties)):
+                        Q[i][j] += (tripsPerYear - 1) * t[MCLoop][year][i][j]
+                    # Add contaminated out-of-state boats to ts
+                    for i, state in enumerate(states.values()):
+                        # Randomly choose whether each out-of-state boat is
+                        # contaminated; store in ts
+                        for boat in range(Ts[i][j]):
+                            if choices(
+                               [1, 0],
+                               [(infProp if state.infested else uninfProp),
+                                1 - (infProp if state.infested \
+                                     else uninfProp)]
+                               )[0] == 1:
+                                ts[MCLoop][year][i][j] += 1
+                        # Add ts (contaminated boats from state i to lake j)
+                        # to Q[i][j]
+                        Q[i][j] += ts[MCLoop][year][i][j]
 
                     # Adjust for decontamination using propCleaned
-                    for x in range(Q.shape[0]):
-                        Q[x] = round(Q[x] * (1 - propCleaned))
+                    Q = (Q * (1 - propCleaned)).round()
 
                 # Update infestation states (with stochastic factor)
                 for j, site in enumerate(sites.values()):
-                    for boat in range(Q[j]):
+                    for boat in range(int(sum(Q)[j])):
                         if choices(
                             [1, 0],
                             [settleRisk * (2 * site.habitability),
@@ -679,7 +673,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
             # End Main Loop
 
-        del OoS, state, x, boat
+        del site, boat
         # End Monte Carlo loop and Model Core
 
         # End Model
@@ -693,14 +687,17 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                  QgsField('Calcium', QVariant.Double),
                  QgsField('Habitability', QVariant.Double),
                  QgsField('Attractiveness', QVariant.Int),
-                 # Inserted fields from below will go here
+                 # Boats on Route fields will go here
+                 # Infestation Proportion fields will go here
                  QgsField('Initially Infested', QVariant.Bool),
-                 QgsField('Boats on Route', QVariant.Int),
                  QgsField('Origin Infested', QVariant.Bool),
                  QgsField('Origin Type', QVariant.String)]
         for n in range(years):
-            fList.insert(n + 6,
+            fList.insert(n + 7,
                 QgsField(f'Year {n} Infestation Proportion', QVariant.Double))
+        for n in range(years):
+            fList.insert(n + 6,
+                QgsField(f'Year {n} Boats on Route', QVariant.Int))
         for field in fList:
             fields.append(field)
         del fList, n
@@ -720,6 +717,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Create matrix of infestation proportions to use here
         # Format: results[loop][year][site] --> avgInfest[site][year]
         avgInfest = sum(results.swapaxes(1, 2)) / MCLoops
+        # And for average number of boats on routes
+        inStBoats = sum(t) / MCLoops
+        outStBoats = sum(ts) / MCLoops
 
         for i, (cName, county) in enumerate(counties.items()):
             # Progress update
@@ -738,10 +738,11 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.calcium,
                                     site.habitability,
                                     site.attractiveness]
+                                   + [int(inStBoats[y][i][j])
+                                      for y in range(years)]
                                    + [float(avgInfest[j][y])
                                       for y in range(years)]
                                    + [site.initInfested,
-                                      int(t[i][j]),
                                       None,
                                       'internal county'])
                 routeSink.addFeature(feat)
@@ -762,10 +763,11 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.calcium,
                                     site.habitability,
                                     site.attractiveness]
+                                   + [int(outStBoats[y][i][j])
+                                      for y in range(years)]
                                    + [float(avgInfest[j][y])
                                       for y in range(years)]
                                    + [site.initInfested,
-                                    int(ts[i][j]),
                                     state.infested,
                                     'external district'])
                 routeSink.addFeature(feat)
