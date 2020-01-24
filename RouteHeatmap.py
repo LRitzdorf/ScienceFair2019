@@ -11,7 +11,7 @@
 
 
 from PyQt5.QtCore import QCoreApplication, QVariant
-from PyQt5.QtGui import QColor
+# from PyQt5.QtGui import QColor
 from qgis.core import *
 import processing
 
@@ -30,7 +30,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     PROP_DECONT =   'PROP_DECONT'  # Proportion of all boats decontaminated
     INF_PROP =      'INF_PROP'     # Out-of-state boat contamination proportion
     UNINF_PROP =    'UNINF_PROP'   # Out-of-state boat contamination proportion
-##    OUTPUT =        'OUTPUT'       # Heatmap layer
+#    OUTPUT =        'OUTPUT'       # Heatmap layer
     ROUTE_OUTPUT =  'ROUTE_OUTPUT' # Route layer (not as a heatmap)
 
     def tr(self, string):
@@ -105,12 +105,12 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             retaining the potential to for unlikely but possible infestation \
             scenarios to occur.
             '''
-##            The first output will be a point layer with heatmap styling, \
-##            showing routes over which contaminated boats are found to be \
-##            likely to travel. Thus, hotspots correspond to sections of road \
-##            where a check station could intercept a large number of \
-##            contaminated boats.
-##        Below: "The second output..."
+#            The first output will be a point layer with heatmap styling, \
+#            showing routes over which contaminated boats are found to be \
+#            likely to travel. Thus, hotspots correspond to sections of road \
+#            where a check station could intercept a large number of \
+#            contaminated boats.
+#        Below: "The second output..."
             + '''
 
             The output will be a polyline layer, containing individual \
@@ -142,13 +142,13 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             extension='pkl'
         ))
 
-##        # Add a new vector layer for the output heatmap
-##        self.addParameter(QgsProcessingParameterVectorDestination(
-##            self.OUTPUT,
-##            self.tr('Output Heatmap Layer'),
-##            QgsProcessing.TypeVectorPoint
-##        ))
-##
+#        # Add a new vector layer for the output heatmap
+#        self.addParameter(QgsProcessingParameterVectorDestination(
+#            self.OUTPUT,
+#            self.tr('Output Heatmap Layer'),
+#            QgsProcessing.TypeVectorPoint
+#        ))
+#
         # Add a new feature sink (vector layer) for the route, not as a heatmap
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.ROUTE_OUTPUT,
@@ -218,7 +218,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # Define data-storage classes for Sites and Counties
 
-        #TODO: Add `assert`ions for @*.setter definitions (infested->bool, etc)
+        # TODO: Add `assert`ions for @*.setter definitions (infested->bool, etc)
         class Site():
             '''
             Site object; contains information for monitoring locations.
@@ -521,8 +521,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Border route distances are now stored in cb[i][j]
         del encoded, decoded, s
 
-        #TODO: Pickle routeMatrix in QGIS temp folder to reduce processing time
-        # for future alg runs
+        # TODO: Pickle routeMatrix in QGIS temp folder to reduce processing
+        # time for future alg runs
 
         # Begin Model
         feedback.setProgressText('Starting Monte Carlo model')
@@ -534,7 +534,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         settleRisk = 0.02
         α = 2
         tripsPerYear = 8  # Assumed number of boat trips per year
-        #TODO: Should probably make some of these but alpha user parameters
+        # TODO: Should probably make some of these but alpha user parameters
 
         # Calculate habitability values
         for site in sites.values():
@@ -608,7 +608,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             # Begin Main Loop
             for year in range(years):
                 feedback.pushInfo(f'\tYear {year}')
-                
+
                 # Cancellation check
                 if feedback.isCanceled():
                     return {None: None}
@@ -780,25 +780,25 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         del i, j, site, county, state
 
 
-#TODO: This could be replaced by using a transparent line symbology
+# TODO: This could be replaced by using a transparent line symbology
 #  Left examples below for creating and setting a renderer
 
-##        # Set up heatmap renderer
-##        # ^ Set weight for each point from field(s) (research)
-##        rndrr = QgsHeatmapRenderer()
-##        rndrr.setColorRamp(QgsGradientColorRamp(
-##            QColor('transparent'),QColor(227,26,28)))
-##        rndrr.setRadiusUnit(1)
-##        rndrr.setRadius(500)
-##
-##        # Assign heatmap renderer to extracted vertices layer
-##        QgsProcessingUtils.mapLayerFromString(vertices['OUTPUT'], context
-##            ).setRenderer(rndrr)
+#        # Set up heatmap renderer
+#        # ^ Set weight for each point from field(s) (research)
+#        rndrr = QgsHeatmapRenderer()
+#        rndrr.setColorRamp(QgsGradientColorRamp(
+#            QColor('transparent'),QColor(227,26,28)))
+#        rndrr.setRadiusUnit(1)
+#        rndrr.setRadius(500)
+#
+#        # Assign heatmap renderer to extracted vertices layer
+#        QgsProcessingUtils.mapLayerFromString(vertices['OUTPUT'], context
+#            ).setRenderer(rndrr)
 
         # End Processing
         feedback.setProgressText('Processing complete; finishing up...')
 
         # Return output layers
         return {self.ROUTE_OUTPUT: routeSinkID}
-##        return {self.OUTPUT:       vertices['OUTPUT'],
-##                self.ROUTE_OUTPUT: routeSinkID}
+#        return {self.OUTPUT:       vertices['OUTPUT'],
+#                self.ROUTE_OUTPUT: routeSinkID}
