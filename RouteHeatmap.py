@@ -19,8 +19,7 @@ import processing
 class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     '''
     Computes mussel travel, as facilitated by boat traffic, in the given water
-    system, then outputs the routes traveled by contaminated boats as a heatmap
-    layer, with more heavily traveled routes having higher weights.
+    system, then outputs the routes traveled by contaminated boats.
     '''
 
     ROUTES =        'ROUTES'       # Pickled route data file
@@ -116,6 +115,12 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             The output will be a polyline layer, containing individual \
             routes as features, with parameters corresponding to attributes of \
             the lakes to which they lead.
+
+            IMPORTANT: Note that clicking the "Cancel" button in this window \
+            will most likely NOT cause the algorithm to end immediately. The \
+            algorithm itself is responsible for handling cancellation \
+            requests, and does not check for them very frequently. As such, it \
+            may take a few minutes for a cancellation command to be acted upon.
             '''
         )
 
@@ -186,8 +191,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # From 2018 FWP data:  64 / 24539  ~0.26%
         self.addParameter(QgsProcessingParameterNumber(
             self.INF_PROP,
-            self.tr('Proportion of out-of-state boats from an infested state \
-                     that are contaminated'),
+            self.tr('Proportion of out-of-state boats from an infested state ' \
+                'that are contaminated'),
             QgsProcessingParameterNumber.Double,
             defaultValue=(64 / 24539),
             minValue=0.0, maxValue=1.0
@@ -197,11 +202,43 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Assume 1/100 of infested:  64 / (24539 * 100)  ~0.0026%
         self.addParameter(QgsProcessingParameterNumber(
             self.UNINF_PROP,
-            self.tr('Proportion of out-of-state boats from an uninfested \
-                    state that are contaminated'),
+            self.tr('Proportion of out-of-state boats from an uninfested ' \
+                'state that are contaminated'),
             QgsProcessingParameterNumber.Double,
             defaultValue=(64 / (24539 * 100)),
             minValue=0.0, maxValue=1.0
+        ))
+
+        # Add paramters for model-specific variables:
+        self.addParameter(QgsProcessingParameterNumber(
+            self.LOW_CALC,
+            self.tr('Calcium concentration below which mussels cannot ' \
+                'survive (in mg/L)'),
+            QgsProcessingParameterNumber.Double,
+            defaultValue=28,
+            minValue=0.0
+        ))
+        self.addParameter(QgsProcessingParameterNumber(
+            self.LOW_PH,
+            self.tr('pH level below which mussels cannot survive'),
+            QgsProcessingParameterNumber.Double,
+            defaultValue=7.4,
+            minValue=0.0, maxValue=14.0
+        ))
+        self.addParameter(QgsProcessingParameterNumber(
+            self.SETTLE_RISK,
+            self.tr('Probability that a contaminated boat causes the lake it ' \
+            'arrives at to become infested'),
+            QgsProcessingParameterNumber.Double,
+            defaultValue=0.02,
+            minValue=0.0, maxValue=1.0
+        ))
+        self.addParameter(QgsProcessingParameterNumber(
+            self.TRIPS_PER_YEAR,
+            self.tr('Number of trips to a lake that each boat makes per year'),
+            QgsProcessingParameterNumber.Integer,
+            defaultValue=8,
+            minValue=1, maxValue=20
         ))
 
         # Consider adding additional vector output layers for lakes and county
@@ -390,44 +427,50 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         pickledFileName = self.parameterAsFile(
             parameters,
             self.ROUTES,
-            context
-        )
+            context)
         # Pickled border routes file
         stateFileName = self.parameterAsFile(
             parameters,
             self.STATE_ROUTES,
-            context
-        )
+            context)
         # Number of Monte Carlo loops to run
         MCLoops = self.parameterAsInt(
             parameters,
             self.MC_LOOPS,
-            context
-        )
+            context)
         # Number of years to simulate
         years = self.parameterAsInt(
             parameters,
             self.YEARS,
-            context
-        )
+            context)
         # Proportion of all boats assumed to be decontaminated
         propCleaned = self.parameterAsDouble(
             parameters,
             self.PROP_DECONT,
-            context
-        )
+            context)
         # Proportion of infested out-of-state boats assumed to be contaminated
         infProp = self.parameterAsDouble(
             parameters,
             self.INF_PROP,
-            context
-        )
+            context)
         # Proportion of uninfested out-of-state boats assumed to be contaminated
         uninfProp = self.parameterAsDouble(
             parameters,
             self.UNINF_PROP,
-            context
-        )
+            context)
+        # Model-specific variables:
+        lowCalc = self.parameterAsDouble(parameters,
+            self.LOW_CALC,
+            context)
+        lowpH = self.parameterAsDouble(parameters,
+            self.LOW_PH,
+            context)
+        settleRisk = self.parameterAsDouble(parameters,
+            self.SETTLE_RISK,
+            context)
+        tripsPerYear = self.parameterAsInt(parameters,
+            self.TRIPS_PER_YEAR,
+            context)
 
         # Internalize pickled counties, borders, sites, and routes
         # Format:
@@ -528,13 +571,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         feedback.setProgressText('Starting Monte Carlo model')
         feedback.setProgress(0)
 
-        # Model-specific variables:
-        lowCalc = 28
-        lowpH = 7.4
-        settleRisk = 0.02
+        # Define a model-specific parameter:
         α = 2
-        tripsPerYear = 8  # Assumed number of boat trips per year
-        # TODO: Should probably make some of these but alpha user parameters
 
         # Calculate habitability values
         for site in sites.values():
