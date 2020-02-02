@@ -1,6 +1,6 @@
 # ScienceFair2019
 
-This is the code for Lucas Ritzdorf's 2018-2020 (originally 2018-2019) science fair project.
+This is the code for Lucas Ritzdorf's 2019-2020 (originally 2018-2019) science fair project.
 
 ## Summary
 
