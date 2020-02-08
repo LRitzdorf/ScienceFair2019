@@ -175,7 +175,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
             self.tr('Number of years to simulate (accuracy likely to decline '\
                     'significantly with increases to this parameter)'),
             QgsProcessingParameterNumber.Integer,
-            minValue=1, maxValue=20
+            minValue=1, maxValue=50
         ))
 
         # Add a paramater for the percentage of boats that are decontaminated
