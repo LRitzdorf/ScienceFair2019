@@ -694,6 +694,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                         Q[i][j] += ts[MCLoop][year][i][j]
 
                     # Adjust for decontamination using propCleaned
+                    # TODO: Redo this to be stochastic
                     Q = (Q * (1 - propCleaned)).round()
 
                 # Update infestation states (with stochastic factor)
