@@ -595,7 +595,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         W = zeros(len(sites),dtype=int)
         # c has already been set up and populated with distances, as has cs
         # Results:
-        results = zeros([MCLoops,years,len(sites)],dtype=bool)
+        avgInfest = zeros([years,len(sites)],dtype=float)
         feedback.pushInfo('Arrays set up')
 
         # Set up O[i], Os[i], and W[j]
@@ -705,10 +705,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                              1 - (settleRisk * (2 * site.habitability))]
                             )[0] == 1:
                             site.infest()
-
-                # Store results
-                for j, site in enumerate(sites.values()):
-                    results[MCLoop][year][j] = site.infested
+                    # Update average infestation rate
+                    avgInfest[year][j] = (MCLoop * avgInfest[year][j] \
+                        + int(site.infested)) / (MCLoop + 1)
 
             # End Main Loop
 
@@ -753,10 +752,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Add route polylines to route layer
         feedback.setProgressText('Adding routes to output layer... '\
                                  '(This could take a while)')
-        # Create matrix of infestation proportions to use here
-        # Format: results[loop][year][site] --> avgInfest[site][year]
-        avgInfest = sum(results.swapaxes(1, 2)) / MCLoops
-        # And for average number of boats on routes
+        # Create matrices for average number of boats on routes
         inStBoats = sum(t) / MCLoops
         outStBoats = sum(ts) / MCLoops
 
