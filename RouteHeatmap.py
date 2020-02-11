@@ -588,7 +588,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         P = zeros(len(counties),dtype=int)
         t = zeros([MCLoops,years,len(counties),len(sites)],dtype=int)
         ts = zeros([MCLoops,years,len(states),len(sites)],dtype=int)
-        Q = zeros([len(counties),len(sites)],dtype=int)
+        Q = zeros(len(sites),dtype=int)
         # Extracted from input:
         O = zeros(len(counties),dtype=int)
         Os = zeros(len(states),dtype=int)
@@ -670,36 +670,46 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                 for i in range(len(counties)):
                     for j in range(len(sites)):
                         t[MCLoop][year][i][j] \
-                                        = A[i] * P[i] * W[j] * (c[i][j] ** -α)
+                            = A[i] * P[i] * W[j] * (c[i][j] ** -α)
 
-                # Compute Q[i][j]: yearly infested boats, i to j
+                # Compute Q[j]: yearly infested boats to j
                 Q.fill(0)
                 for j in range(len(sites)):
                     for i in range(len(counties)):
-                        Q[i][j] += (tripsPerYear - 1) * t[MCLoop][year][i][j]
+                        Q[j] += (tripsPerYear - 1) * t[MCLoop][year][i][j]
                     # Add contaminated out-of-state boats to ts
                     for i, state in enumerate(states.values()):
                         # Randomly choose whether each out-of-state boat is
                         # contaminated; store in ts
                         for boat in range(Ts[i][j]):
                             if choices(
-                               [1, 0],
-                               [(infProp if state.infested else uninfProp),
-                                1 - (infProp if state.infested \
-                                     else uninfProp)]
-                               )[0] == 1:
+                                [1, 0],
+                                [(infProp if state.infested else uninfProp),
+                                 1 - (infProp if state.infested \
+                                      else uninfProp)]
+                            )[0] == 1:
                                 ts[MCLoop][year][i][j] += 1
                         # Add ts (contaminated boats from state i to lake j)
-                        # to Q[i][j]
-                        Q[i][j] += ts[MCLoop][year][i][j]
+                        # to Q[j]
+                        Q[j] += ts[MCLoop][year][i][j]
 
-                    # Adjust for decontamination using propCleaned
-                    # TODO: Redo this to be stochastic
-                    Q = (Q * (1 - propCleaned)).round()
+                    # Adjust for decontamination using propCleaned,
+                    # stochastically
+                    if propCleaned < 1:
+                        for j in range(len(sites)):
+                            b = Q[j]
+                            Q[j] = 0
+                            for i in range(b):
+                                if choices(
+                                    [1, 0],
+                                    [1 - propCleaned, propCleaned]
+                                )[0] == 1:
+                                    Q[j] += 1
+                        del b
 
                 # Update infestation states (with stochastic factor)
                 for j, site in enumerate(sites.values()):
-                    for boat in range(int(sum(Q)[j])):
+                    for boat in range(Q[j]):
                         if choices(
                             [1, 0],
                             [settleRisk * (2 * site.habitability),
