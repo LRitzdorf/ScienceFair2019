@@ -776,7 +776,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.attractiveness]
                                    + [float(inStBoats[y][i][j])
                                       for y in range(years)]
-                                   + [float(avgInfest[j][y])
+                                   + [float(avgInfest[y][j])
                                       for y in range(years)]
                                    + [site.initInfested,
                                       None,
@@ -801,7 +801,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
                                     site.attractiveness]
                                    + [float(outStBoats[y][i][j])
                                       for y in range(years)]
-                                   + [float(avgInfest[j][y])
+                                   + [float(avgInfest[y][j])
                                       for y in range(years)]
                                    + [site.initInfested,
                                     state.infested,
