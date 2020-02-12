@@ -22,15 +22,19 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
     system, then outputs the routes traveled by contaminated boats.
     '''
 
-    ROUTES =        'ROUTES'       # Pickled route data file
-    STATE_ROUTES =  'STATE_ROUTES' # Pickled state route data file
-    MC_LOOPS =      'MC_LOOPS'     # Number of Monte Carlo loops to run
-    YEARS =         'YEARS'        # Number of years to simulate
-    PROP_DECONT =   'PROP_DECONT'  # Proportion of all boats decontaminated
-    INF_PROP =      'INF_PROP'     # Out-of-state boat contamination proportion
-    UNINF_PROP =    'UNINF_PROP'   # Out-of-state boat contamination proportion
-#    OUTPUT =        'OUTPUT'       # Heatmap layer
-    ROUTE_OUTPUT =  'ROUTE_OUTPUT' # Route layer (not as a heatmap)
+    ROUTES =         'ROUTES'         # Pickled route data file
+    STATE_ROUTES =   'STATE_ROUTES'   # Pickled state route data file
+    MC_LOOPS =       'MC_LOOPS'       # Number of Monte Carlo loops to run
+    YEARS =          'YEARS'          # Number of years to simulate
+    PROP_DECONT =    'PROP_DECONT'    # Proportion of all boats decontaminated
+    INF_PROP =       'INF_PROP'       # OutOfState boat contamination proportion
+    UNINF_PROP =     'UNINF_PROP'     # OutOfState boat contamination proportion
+    LOW_CALC =       'LOW_CALC'       # Lowest survivable calcium level
+    LOW_PH =         'LOW_PH'         # Lowest survivable pH level
+    SETTLE_RISK =    'SETTLE_RISK'    # P(inf) from a single contaminated boat
+    TRIPS_PER_YEAR = 'TRIPS_PER_YEAR' # Num of trips to lakes per boat each year
+#    OUTPUT =        'OUTPUT'          # Heatmap layer
+    ROUTE_OUTPUT =  'ROUTE_OUTPUT'    # Route layer (not as a heatmap)
 
     def tr(self, string):
         '''
