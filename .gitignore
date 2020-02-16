@@ -3,3 +3,6 @@
 
 # CPython cache files
 __pycache__
+
+# VIM .swp files
+.*.swp
