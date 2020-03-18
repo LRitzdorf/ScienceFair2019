@@ -255,6 +255,7 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         '''
 
         from openrouteservice.convert import decode_polyline
+        from os.path import isfile, getmtime
         import pickle
 
         # Define data-storage classes for Sites and Counties
@@ -381,8 +382,9 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         # Define habitability function
         def habitability(pH, calcium, lowpH, lowCalc):
             """
-            Returns the habitability of the site, based on pH and calcium levels.
-            Result is a probability expressed as a decimal, or None if no data exists.
+            Returns the habitability of the site, based on pH and calcium
+            levels. Result is a probability expressed as a decimal, or None if
+            no data exists.
             """
             if (pH == None) and (calcium == None):
                 # Cannot compute risk
@@ -521,6 +523,16 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
         c = zeros([len(counties),len(sites)],dtype=float)
         cs = zeros([len(states),len(sites)],dtype=float)
 
+        # Check for presence of cache file
+        usingCache = False
+        cachePath = QgsProcessingUtils.tempFolder() + '/RouteHeatmapData.pkl'
+        if isfile(cachePath):
+            usingCache = True
+            with open(cachePath, 'rb') as cache:
+                # Retrieve timestamp and actual data
+                # data = pickle.load(cache)
+            # getmtime(path) returns modification timestamp
+
         # Create route polylines
         feedback.setProgressText('Calculating internal route lengths... '\
                                  '(This could take a while)')
@@ -570,6 +582,8 @@ class MusselSpreadSimulationAlgorithm(QgsProcessingAlgorithm):
 
         # TODO: Pickle routeMatrix in QGIS temp folder to reduce processing
         # time for future alg runs
+        if not usingCache:
+            #
 
         # Begin Model
         feedback.setProgressText('Starting Monte Carlo model')
