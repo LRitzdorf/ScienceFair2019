@@ -4,11 +4,8 @@
 # CPython cache files
 /__pycache__
 
-# venv files
-/Include
-/Lib
-/Scripts
-pyvenv.cfg
+# venv directory
+/venv
 
 # PyCharm directory
 /.idea
