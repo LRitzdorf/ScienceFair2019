@@ -6,3 +6,9 @@ __pycache__
 
 # VIM .swp files
 .*.swp
+
+# venv files
+Include/*
+Lib/*
+Scripts/*
+pyvenv.cfg
