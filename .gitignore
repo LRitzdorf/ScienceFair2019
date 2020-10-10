@@ -2,13 +2,13 @@
 *.lnk
 
 # CPython cache files
-__pycache__
-
-# VIM .swp files
-.*.swp
+/__pycache__
 
 # venv files
-Include/*
-Lib/*
-Scripts/*
+/Include
+/Lib
+/Scripts
 pyvenv.cfg
+
+# PyCharm directory
+/.idea
