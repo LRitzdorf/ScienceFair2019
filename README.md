@@ -1,6 +1,6 @@
 # ScienceFair2019
 
-This is the code for Lucas Ritzdorf's 2019-2020 (originally 2018-2019) science fair project. It was designed for Python 3.8.
+This is the code for Lucas Ritzdorf's 2019-2020 (originally 2018-2019) science fair project.
 
 ## Summary
 
